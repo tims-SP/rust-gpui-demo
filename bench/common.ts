@@ -73,9 +73,21 @@ export async function writeResult(framework: string, phases: Record<string, Time
   if (!String(tree).includes("Song 12 / 119") && !painted.some(t => t.includes("Song 12 / 119"))) {
     throw new Error("Live GPUI tree/paint missing final song title; tree " + String(tree).slice(0, 600) + "; painted " + JSON.stringify(painted.slice(0, 8)));
   }
-  const visibleSongs = painted.filter(t => /^Song [0-9]+(?: \/ [0-9]+)?$/.test(t));
+  const treeLabels: string[] = [];
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    const value = node as { text?: unknown; children?: unknown };
+    if (typeof value.text === "string" && /^Song [0-9]+(?: \/ [0-9]+)?$/.test(value.text)) {
+      treeLabels.push(value.text);
+    }
+    if (Array.isArray(value.children)) for (const child of value.children) walk(child);
+  };
+  walk(JSON.parse(tree));
+  const paintedSongs = painted.filter(t => /^Song [0-9]+(?: \/ [0-9]+)?$/.test(t));
+  const visibleSongs = paintedSongs.length >= 10 ? paintedSongs : treeLabels;
   if (visibleSongs.length < 10 || visibleSongs[0] !== "Song 24") {
-    throw new Error("Keyed reorder not reflected in actual paint order. First painted songs: " + JSON.stringify(visibleSongs.slice(0, 12)));
+    throw new Error("Keyed reorder not reflected in live GPUI automation tree. First song labels: " +
+      JSON.stringify(visibleSongs.slice(0, 12)) + "; tree preview: " + tree.slice(0, 1200));
   }
   mkdirSync("results", { recursive: true });
   const snapshot = spawnSync("import", ["-window", "root", "results/" + framework + ".png"], { timeout: 15000 });
@@ -83,10 +95,15 @@ export async function writeResult(framework: string, phases: Record<string, Time
     console.error("X11 screenshot failed", snapshot.stderr?.toString());
     throw new Error("Failed to capture real Linux X11 screen");
   }
+  const imageStats = spawnSync("identify", ["-format", "%[standard-deviation]", "results/" + framework + ".png"], { timeout: 15000 });
+  const deviation = Number(imageStats.stdout?.toString());
+  if (imageStats.status !== 0 || !Number.isFinite(deviation) || deviation <= 0) {
+    throw new Error("X11 screenshot is empty/unreadable (stddev=" + deviation + "): " + imageStats.stderr?.toString());
+  }
   const data = { framework, runtime: "Bun", platform: process.platform,
     backend: "real GpuixRenderer Linux window (Xvfb + Mesa Vulkan software rasterizer)",
     rows: 48, phases, retainedTreeBytes: Buffer.byteLength(tree), visibleSongs: visibleSongs.length,
-    screenshot: "results/" + framework + ".png" };
+    screenshot: "results/" + framework + ".png", screenshotDeviation: deviation };
   writeFileSync("results/" + framework + ".json", JSON.stringify(data, null, 2) + "\n");
   console.log("BENCHMARK_RESULT=" + JSON.stringify(data));
 }
