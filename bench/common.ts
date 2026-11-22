@@ -85,25 +85,30 @@ export async function writeResult(framework: string, phases: Record<string, Time
   walk(JSON.parse(tree));
   const paintedSongs = painted.filter(t => /^Song [0-9]+(?: \/ [0-9]+)?$/.test(t));
   const visibleSongs = paintedSongs.length >= 10 ? paintedSongs : treeLabels;
-  if (visibleSongs.length < 10 || visibleSongs[0] !== "Song 24") {
+  if (visibleSongs.length !== 48 || visibleSongs[0] !== "Song 24") {
     throw new Error("Keyed reorder not reflected in live GPUI automation tree. First song labels: " +
       JSON.stringify(visibleSongs.slice(0, 12)) + "; tree preview: " + tree.slice(0, 1200));
   }
   mkdirSync("results", { recursive: true });
-  const snapshot = spawnSync("import", ["-window", "root", "results/" + framework + ".png"], { timeout: 15000 });
+  const trial = Number(process.env.BENCH_TRIAL ?? "0");
+  if (!Number.isInteger(trial) || trial < 0 || trial > 100) throw new Error("Invalid BENCH_TRIAL");
+  const png = "results/" + framework + "-" + trial + ".png";
+  const snapshot = spawnSync("import", ["-window", "root", png], { timeout: 15000 });
   if (snapshot.status !== 0) {
     console.error("X11 screenshot failed", snapshot.stderr?.toString());
     throw new Error("Failed to capture real Linux X11 screen");
   }
-  const imageStats = spawnSync("identify", ["-format", "%[standard-deviation]", "results/" + framework + ".png"], { timeout: 15000 });
+  const imageStats = spawnSync("identify", ["-format", "%[standard-deviation]", png], { timeout: 15000 });
   const deviation = Number(imageStats.stdout?.toString());
   if (imageStats.status !== 0 || !Number.isFinite(deviation) || deviation <= 0) {
     throw new Error("X11 screenshot is empty/unreadable (stddev=" + deviation + "): " + imageStats.stderr?.toString());
   }
   const data = { framework, runtime: "Bun", platform: process.platform,
     backend: "real GpuixRenderer Linux window (Xvfb + Mesa Vulkan software rasterizer)",
-    rows: 48, phases, retainedTreeBytes: Buffer.byteLength(tree), visibleSongs: visibleSongs.length,
-    screenshot: "results/" + framework + ".png", screenshotDeviation: deviation };
-  writeFileSync("results/" + framework + ".json", JSON.stringify(data, null, 2) + "\n");
+    trial, rows: 48, datasetRows: 10000, phases,
+    retainedTreeBytes: Buffer.byteLength(tree), visibleSongs: visibleSongs.length,
+    memory: { rssBytes: process.memoryUsage().rss, heapUsedBytes: process.memoryUsage().heapUsed },
+    screenshot: png, screenshotDeviation: deviation };
+  writeFileSync("results/" + framework + "-" + trial + ".json", JSON.stringify(data, null, 2) + "\n");
   console.log("BENCHMARK_RESULT=" + JSON.stringify(data));
 }

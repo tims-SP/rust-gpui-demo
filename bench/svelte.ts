@@ -11,6 +11,7 @@ try {
     updateTitle: (index: number, title: string) => void;
     changeTheme: (color: string) => void;
     rotate: () => void;
+    shiftWindow: (index: number) => void;
   };
   const native = get_native() as GpuixRenderer;
   if (!native) throw new Error("Svelte root did not bind a real native renderer");
@@ -20,7 +21,10 @@ try {
     single: await measurePhase(120, i => app.updateTitle(12, "Song 12 / " + i), settle),
     theme: await measurePhase(24, i => app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699"), settle),
     reorder: await measurePhase(24, () => app.rotate(), settle),
+    window: await measurePhase(120, i => app.shiftWindow(i + 1), settle),
   };
+  app.shiftWindow(0);
+  settle();
   await Bun.sleep(400);
   await writeResult("svelte", phases, native);
   process.exit(0);

@@ -1,40 +1,85 @@
 import json
+import statistics
 from pathlib import Path
 
 root = Path("results")
-solid = json.loads((root / "solid.json").read_text())
-svelte = json.loads((root / "svelte.json").read_text())
-assert solid["platform"] == svelte["platform"] == "linux"
-assert solid["rows"] == svelte["rows"] == 48
-rows = []
-for name in ("single", "theme", "reorder"):
-    a, b = solid["phases"][name], svelte["phases"][name]
-    assert a["iterations"] == b["iterations"] and a["iterations"] > 0
-    assert a["batches"] and b["batches"]
-    rows.append({
-        "scenario": name,
-        "solid": { k: a[k] for k in ("elapsedMs", "batches", "mutations", "bytes") },
-        "svelte": { k: b[k] for k in ("elapsedMs", "batches", "mutations", "bytes") }
-    })
-report = {
+trials = range(5)
+results = {}
+for framework in ("solid", "svelte"):
+    reports = []
+    for trial in trials:
+        path = root / f"{framework}-{trial}.json"
+        assert path.exists(), f"Missing native run {path}"
+        r = json.loads(path.read_text())
+        assert r["framework"] == framework and r["trial"] == trial
+        assert r["platform"] == "linux" and r["rows"] == 48 and r["datasetRows"] == 10000
+        assert r["visibleSongs"] == 48 and r["screenshotDeviation"] > 0
+        assert (root / f"{framework}-{trial}.png").stat().st_size > 500
+        reports.append(r)
+    results[framework] = reports
+
+scenarios = ("single", "theme", "reorder", "window")
+table = []
+for scenario in scenarios:
+    cases = {}
+    for framework, reports in results.items():
+        phases = [r["phases"][scenario] for r in reports]
+        assert len({p["iterations"] for p in phases}) == 1
+        assert all(p["batches"] > 0 and p["mutations"] > 0 for p in phases)
+        med = lambda key: round(statistics.median(p[key] for p in phases), 4)
+        cases[framework] = {
+            "iterations": phases[0]["iterations"],
+            "elapsedMsMedian": med("elapsedMs"),
+            "elapsedMsMin": min(p["elapsedMs"] for p in phases),
+            "elapsedMsMax": max(p["elapsedMs"] for p in phases),
+            "p95MsMedian": med("p95Ms"),
+            "mutationsMedian": med("mutations"),
+            "bytesMedian": med("bytes"),
+            "allTrials": phases,
+        }
+    assert cases["solid"]["iterations"] == cases["svelte"]["iterations"]
+    table.append({"scenario": scenario, **cases})
+
+summary = {
     "status": "passed",
-    "scope": "Linux software Vulkan native-window mutation and JS scheduling comparison",
+    "runsPerFramework": len(trials),
+    "platform": "Linux Xvfb + Mesa llvmpipe software Vulkan",
+    "renderer": "GPUIX native 0.11.0",
+    "dataset": 10000,
+    "visible": 48,
+    "results": table,
     "limitations": [
-        "GitHub-hosted Ubuntu runner uses Mesa software Vulkan, not a hardware GPU",
-        "Each framework runs in a separate process, and time samples are not a rigorous confidence interval",
-        "Style strategies differ by design (Svelte CSS variable versus Solid reactive inline style)",
-        "No actual custom Rust ArtworkFlow element or mobile test in this phase",
-    ],
-    "results": rows
+        "Software Vulkan is not a hardware GPU benchmark.",
+        "5 independent processes help expose noise but do not equal hardware-controlled confidence intervals.",
+        "Measurements include instrumented mutation JSON parsing and synchronous FFI, not native frame time.",
+        "Window scenario uses 48-row application windowing over 10000 data records, not GPUI native virtual-list.",
+        "Svelte CSS variable/theme versus Solid inline reactive style is an end-to-end strategy comparison.",
+        "Custom Rust ArtworkFlow component and Android/iOS are not covered."
+    ]
 }
-(root / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
-lines = ["# Linux GPUIX native Svelte / Solid comparison", "",
-         "Runner: GitHub-hosted Ubuntu 24.04, Xvfb, Mesa software Vulkan, Bun", "",
-         "| Scenario | Solid ms | Svelte ms | Solid native mutations | Svelte native mutations |",
-         "|---|---:|---:|---:|---:|"]
-for item in rows:
-    a, b = item["solid"], item["svelte"]
-    lines.append(f"| {item['scenario']} | {a['elapsedMs']} | {b['elapsedMs']} | {a['mutations']} | {b['mutations']} |")
-lines += ["", "**Limits**: timings include JavaScript scheduling and FFI submission, not controlled native GPU-frame throughput. Both applications use the real Linux GPUIX window; images are X11 captures. Do not infer a universal winner from this run."]
+(root / "comparison.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+lines = [
+    "# Svelte vs Solid — 5 independent Linux native-window runs",
+    "",
+    "Environment: Ubuntu 24.04, Bun 1.4.5, GPUIX 0.11, Xvfb + Mesa software Vulkan",
+    "",
+    "| Scenario | Updates | Solid median ms | Svelte median ms | Solid median P95 (ms/op) | Svelte median P95 | Solid median mutation | Svelte median mutation |",
+    "|---|---:|---:|---:|---:|---:|---:|---:|"
+]
+for case in table:
+    a, b = case["solid"], case["svelte"]
+    lines.append(
+        f"| {case['scenario']} | {a['iterations']} | {a['elapsedMsMedian']} | "
+        f"{b['elapsedMsMedian']} | {a['p95MsMedian']} | {b['p95MsMedian']} | "
+        f"{a['mutationsMedian']} | {b['mutationsMedian']} |"
+    )
+lines += [
+    "",
+    "Each figure is a median of **5 independent Linux processes**, not a single run.",
+    "See comparison.json for all samples, per-operation details and RSS/heap from individual JSON files.",
+    "Source data is a 10,000-song dataset with a 48-row visible window (not GPUI's native virtual-list).",
+    "Pass requires nonzero mutations, live GPUI tree/order checks, and non-blank X11 screenshots for **all** 10 runs.",
+    "This is a JS + FFI comparison with sampling overhead, not a GPU hardware performance ranking.",
+]
 (root / "SUMMARY.md").write_text("\n".join(lines) + "\n")
 print("\n".join(lines), flush=True)

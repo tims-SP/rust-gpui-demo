@@ -1,6 +1,10 @@
 <script lang="ts">
-  let tracks = $state(Array.from({ length: 48 }, (_, id) => ({ id, title: "Song " + id })));
-  let order = $state(tracks.map(song => song.id));
+  let tracks = $state(Array.from({ length: 10000 }, (_, id) => ({ id, title: "Song " + id })));
+  let order = $state(Array.from({ length: 48 }, (_, id) => id));
+  let windowStart = $state(0);
+  let visibleRows = $derived(windowStart === 0
+    ? order.map(id => tracks[id])
+    : tracks.slice(windowStart, windowStart + 48));
   let accent = $state("#8b5cf6");
 
   export function updateTitle(index: number, value: string) {
@@ -12,12 +16,15 @@
   export function rotate() {
     order = [...order.slice(1), order[0]];
   }
+  export function shiftWindow(index: number) {
+    windowStart = index;
+  }
 </script>
 
 <div class="screen" style:--accent={accent}>
-  {#each order as id (id)}
+  {#each visibleRows as track (track.id)}
     <div class="row">
-      <text class="song">{tracks[id].title}</text>
+      <text class="song">{track.title}</text>
     </div>
   {/each}
 </div>

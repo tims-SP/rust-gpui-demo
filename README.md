@@ -1,54 +1,53 @@
-# GPUI on Linux: Svelte 5 vs SolidJS 1.9
+# GPUIX Linux: Svelte 5 vs SolidJS 1.9
 
-This repository is a clean, Linux-only native GPUIX comparison. The previous
-lyrics casting, MP4 and WebRTC sources are removed from the current tree;
-their Git history remains available.
+Linux-only **native GPUIX** comparison. The original lyrics/WebRTC test files
+were removed from the current worktree; the Git history is preserved.
 
-## What is tested
+## Current benchmark
 
-Two independent implementations of the same 48-row music library:
+- `@gpuix/native` 0.11.0 is shared by `@gpuix/solid` 0.11.0 and `gpuix-svelte` 0.6.0.
+- Same 10,000-track backing dataset; 48 rendered rows.
+- 120 single-row edits, 24 theme updates, 24 list rotations and 120 window movements.
+- **5 independent runs per framework**, alternating execution order.
+- Measures end-to-end JS update + instrumented Native Mutation submission, including per-operation P95, batch and byte counts.
+- Checks the real Linux GPUI Automation Tree, final list order and nonblank screenshot.
+- Measures process RSS and heap at the end. A one-time RSS number **is not a memory-leak test**.
+- GitHub Actions runs Ubuntu 24.04 under Xvfb / Mesa software Vulkan (llvmpipe), not physical GPU.
 
-- **Solid**: Solid 1.9 Signals + Store, `@gpuix/solid` 0.11.
-- **Svelte**: Svelte 5 Runes, `gpuix-svelte` 0.6, scoped CSS and `var(--accent)`.
-- Both use **`@gpuix/native` 0.11** and run a real GPUI window on Linux.
-- GitHub Actions runs them under Xvfb with Mesa **software Vulkan**, collects
-  actual `applyBatch` mutations, measures elapsed JS/FFI time, checks a
-  final value in the Rust retained tree and captures an X11 screenshot.
+[CI workflow](https://github.com/tims-SP/rust-gpui-demo/actions/workflows/linux-compare.yml)
 
-Same scenarios: 120 single-row edits, 24 theme switches, 24 keyed list rotations.
-The scripts fail if the native addon, mutation probe, retained-tree assertion,
-or screenshot fails. No screenshots or numbers are synthesized.
+Download the result artifact: `comparison.json`, `SUMMARY.md`, `solid-*.json`,
+`svelte-*.json`, process logs and actual X11 `.png` captures.
 
-## CI and results
+## Interpretation
 
-[Linux comparison workflow](https://github.com/tims-SP/rust-gpui-demo/actions/workflows/linux-compare.yml)
-runs on each `main` push and through `workflow_dispatch`. Download the
-`linux-svelte-solid-gpui-results` artifact for JSON, logs, summary and PNGs.
+The "window" workload updates an **app-side** 48-row window over a 10k collection;
+it does *not* test GPUI native `virtual-list`. Svelte's CSS variable propagation
+and Solid's inline reactive style are intentionally different implementation
+strategies; their performance numbers test the entire strategy, not just the
+framework kernel.
 
-### Scope and limitations
+No claim is made about GPU frame times, Android/iOS performance, a custom Rust
+ArtworkFlow node, long-running memory leaks or AI Agent iteration cost.
+The native addon and compositor are real, but software Vulkan is not a GPU
+hardware benchmark. Five process trials provide repeatability evidence, not
+controlled confidence intervals.
 
-- GPUIX Linux upstream has no `TestGpuixRenderer`. These are **real-window**
-  tests, not headless `TestGpuixRenderer` tests.
-- Software Vulkan is not representative of a discrete/integrated hardware GPU.
-- Svelte uses cascading CSS variables, while Solid uses direct reactive
-  styles; mutations and style propagation are the **actual integration cost**
-  of those designs, not an isolated framework microbenchmark.
-- The first iteration **does not test a custom Rust ArtworkFlow component**,
-  real GPU frame-time distributions, memory leak cycles or mobile hosts.
-  These are explicitly not claimed as passed.
-- A single CI run must not be treated as a statistically significant winner.
+## Linux manual reproduction
 
-## Reproduce on Linux
+Install Bun 1.4.5, Node 24, Xvfb, ImageMagick, Mesa Vulkan and the system
+libraries in the workflow:
 
-Install Bun, Node 24, Xvfb, ImageMagick, Mesa Vulkan and the X11 libraries
-listed in the workflow. Then:
-
-```sh
+```bash
 bun install
 mkdir -p results
-xvfb-run -a -s "-screen 0 1280x950x24" bun run bench:solid
-xvfb-run -a -s "-screen 0 1280x950x24" bun run bench:svelte
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json
+for trial in 0 1 2 3 4; do
+  export BENCH_TRIAL="$trial"
+  xvfb-run -a -s "-screen 0 1280x950x24" bun run bench:solid
+  xvfb-run -a -s "-screen 0 1280x950x24" bun run bench:svelte
+done
 bun run compare
 ```
 
-Only pass/fail and measurements produced by real Actions runs are evidence.
+Only CI logs, actual run JSON and screenshots are evidence of success.
