@@ -10,7 +10,7 @@ const [tracks, setTracks] = createStore(base);
 const [order, setOrder] = createSignal(base.slice(0, 48).map(row => row.id));
 const [windowStart, setWindowStart] = createSignal(0);
 const keyMode = process.env.SOLID_FOR_MODE === "ids";
-const noStyle = process.env.BENCH_STYLE_MODE === "none";
+const staticStyle = process.env.BENCH_STYLE_MODE === "static";
 const visibleRows = createMemo(() => windowStart() === 0
   ? order().map(id => tracks[id]!)
   : Array.from({ length: 48 }, (_, index) => tracks[windowStart() + index]!));
@@ -22,11 +22,13 @@ let native: GpuixRenderer | undefined;
 
 function App() {
   native = useGpuixRequired() as GpuixRenderer;
-  if (noStyle) {
-    return <div>
+  if (staticStyle) {
+    return <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 20, gap: 2, backgroundColor: "#101620" }}>
       <For each={visibleKeys()}>{track => {
         const id = typeof track === "number" ? track : track.id;
-        return <div><text>{tracks[id]!.title}</text></div>;
+        return <div style={{ display: "flex", flexDirection: "row", height: 12, padding: 3 }}>
+          <text style={{ color: "#8b5cf6", fontSize: 12 }}>{tracks[id]!.title}</text>
+        </div>;
       }}</For>
     </div>;
   }
@@ -48,7 +50,7 @@ try {
   await Bun.sleep(700);
   const phases = {
     single: await measurePhase(120, i => setTracks(12, "title", "Song 12 / " + i), () => root.flushSync(() => {})),
-    ...(!noStyle ? { theme: await measurePhase(24, i => setAccent(i % 2 ? "#8b5cf6" : "#ff6699"), () => root.flushSync(() => {})) } : {}),
+    ...(!staticStyle ? { theme: await measurePhase(24, i => setAccent(i % 2 ? "#8b5cf6" : "#ff6699"), () => root.flushSync(() => {})) } : {}),
     offscreen: await measurePhase(200, i => setTracks(5000 + i, "title", "Offscreen " + i), () => root.flushSync(() => {})),
     reorder: await measurePhase(24, () => setOrder(rows => [...rows.slice(1), rows[0]!]), () => root.flushSync(() => {})),
     window: await measurePhase(120, i => setWindowStart(i + 1), () => root.flushSync(() => {})),
