@@ -28,7 +28,7 @@ jobs:
       - name: Install Mesa Vulkan + X11
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends             xvfb xauth imagemagick mesa-vulkan-drivers vulkan-tools             libx11-xcb1 libxkbcommon-x11-0 libxkbcommon0 libwayland-client0             libfontconfig1 libvulkan1 fonts-noto-cjk libasound2 libssl3
+          sudo apt-get install -y --no-install-recommends             xvfb xauth imagemagick mesa-vulkan-drivers vulkan-tools             libx11-xcb1 libxkbcommon-x11-0 libxkbcommon0 libwayland-client0             libfontconfig1 libvulkan1 fonts-noto-cjk libasound2t64 libssl3
           mkdir -p results
           vulkaninfo --summary | tee results/vulkan.txt
           ls /usr/share/vulkan/icd.d | tee results/vulkan-icds.txt
