@@ -1,5 +1,5 @@
 import { flushSync } from "svelte";
-import { render } from "gpuix-svelte";
+import { render, renderer } from "gpuix-svelte";
 import { commit, get_native } from "gpuix-svelte/renderer";
 import { assertWindowState, instrumentNative, measurePhase, writeResult } from "./common.ts";
 import App from "./SvelteApp.svelte";
@@ -17,14 +17,64 @@ try {
   };
   const native = get_native() as GpuixRenderer;
   if (!native) throw new Error("Svelte root did not bind a real native renderer");
-  const settle = () => { flushSync(); commit(); };
+  const tracing = process.env.SVELTE_HOST_TRACE === "1";
+  type MethodTime = { calls: number; ms: number };
+  type Trace = { flushMs: number; commitMs: number; host: Record<string, MethodTime> };
+  let activeTrace: Trace | null = null;
+  if (tracing) {
+    const target = renderer as unknown as Record<string, (...args: unknown[]) => unknown>;
+    for (const name of ["createElement", "createTextNode", "setAttribute", "insert", "remove", "setText"]) {
+      const original = target[name];
+      if (typeof original !== "function") throw new Error("Svelte host is missing " + name);
+      target[name] = (...args) => {
+        const t0 = performance.now();
+        try { return original.apply(renderer, args); }
+        finally {
+          if (activeTrace) {
+            const item = activeTrace.host[name] ??= { calls: 0, ms: 0 };
+            item.calls++;
+            item.ms += performance.now() - t0;
+          }
+        }
+      };
+    }
+  }
+  const settle = () => {
+    const t0 = performance.now();
+    flushSync();
+    const t1 = performance.now();
+    commit();
+    const t2 = performance.now();
+    if (activeTrace) {
+      activeTrace.flushMs += t1 - t0;
+      activeTrace.commitMs += t2 - t1;
+    }
+  };
+  const measure = async (iterations: number, action: (i: number) => void) => {
+    activeTrace = tracing ? { flushMs: 0, commitMs: 0, host: {} } : null;
+    const trace = activeTrace;
+    try {
+      const result = await measurePhase(iterations, action, settle);
+      if (!trace) return result;
+      return {
+        ...result,
+        svelteTrace: {
+          flushMs: +trace.flushMs.toFixed(4),
+          commitMs: +trace.commitMs.toFixed(4),
+          host: Object.fromEntries(Object.entries(trace.host).map(([key, value]) => [key, {
+            calls: value.calls, ms: +value.ms.toFixed(4)
+          }]))
+        }
+      };
+    } finally { activeTrace = null; }
+  };
   await Bun.sleep(700);
   const phases = {
-    single: await measurePhase(120, i => app.updateTitle(12, "Song 12 / " + i), settle),
-    theme: await measurePhase(24, i => app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699"), settle),
-    offscreen: await measurePhase(200, i => app.updateTitle(5000 + i, "Offscreen " + i), settle),
-    reorder: await measurePhase(24, () => app.rotate(), settle),
-    window: await measurePhase(120, i => app.shiftWindow(i + 1), settle),
+    single: await measure(120, i => app.updateTitle(12, "Song 12 / " + i)),
+    theme: await measure(24, i => app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699")),
+    offscreen: await measure(200, i => app.updateTitle(5000 + i, "Offscreen " + i)),
+    reorder: await measure(24, () => app.rotate()),
+    window: await measure(120, i => app.shiftWindow(i + 1)),
   };
   assertWindowState(native, 120);
   app.shiftWindow(0);

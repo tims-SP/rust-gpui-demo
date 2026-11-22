@@ -56,3 +56,5 @@ Only CI logs, actual run JSON and screenshots are evidence of success.
 ## Performance root-cause isolation
 
 The workflow adds three native process trials for two targeted variants after the five baseline trials: Solid `<For>` keyed by numeric IDs instead of reactive store objects, and Svelte direct `style:color` instead of inherited `var(--accent)`. The same dataset, Native 0.11 backend and window assertions are required. The emitted `DIAGNOSIS.md` separates state update, framework flush, benchmark probe overhead and native addon call time, along with per-operation mutation counts.
+
+An additional instrumented Svelte run records `flushSync()`, `commit()`, and individual renderer host method timings (setAttribute/insert/remove/setText). The traces deliberately add call overhead and therefore must not be treated as uninstrumented framework throughput; they are intended to locate hot paths.

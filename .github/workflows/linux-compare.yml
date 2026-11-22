@@ -75,9 +75,22 @@ jobs:
             unset SOLID_FOR_MODE
             export BENCH_CASE="inline"
             export SVELTE_STYLE_MODE="inline"
+            export SVELTE_HOST_TRACE="1"
             xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:svelte 2>&1 | tee "results/svelte-inline-$trial.log"
             unset SVELTE_STYLE_MODE
+            unset SVELTE_HOST_TRACE
             unset BENCH_CASE
+          done
+      - name: Trace Svelte host methods for 3 original-CSS trials
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+          BENCH_CASE: trace
+          SVELTE_HOST_TRACE: "1"
+        run: |
+          set -euo pipefail
+          for trial in 8 9 10; do
+            export BENCH_TRIAL="$trial"
+            xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:svelte 2>&1 | tee "results/svelte-trace-$trial.log"
           done
       - name: Compare and assert all 10 runs
         run: |
