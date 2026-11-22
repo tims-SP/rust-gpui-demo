@@ -62,3 +62,13 @@ An additional instrumented Svelte run records `flushSync()`, `commit()`, and ind
 ## Root-cause analysis
 
 [Experiment-based Svelte vs Solid bottleneck report](docs/ROOT_CAUSE.md) summarizes five-trial timing, the two controlled variants, Svelte host tracing, the remaining uncertainty, and the upstream source hotspots.
+
+## Unstyled control
+
+GitHub Actions now also runs **three independent completely unstyled** runs per framework
+(`BENCH_STYLE_MODE=none` and `SVELTE_STYLE_MODE=none`). Neither component sets any
+CSS, class or style property, but both preserve the same state and keyed list updates.
+The `theme` phase is omitted, because a theme with no consumers should do no
+work. `results/UNSTYLED.md` and `UNSTYLED.json` compare the three relevant
+visible-update operations and 200 hidden-row edits against the five styled baseline trials.
+This experiment intentionally does **not** guarantee pixel-identical UI layout.

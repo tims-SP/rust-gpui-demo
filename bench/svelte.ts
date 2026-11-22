@@ -4,7 +4,10 @@ import { commit, get_native } from "gpuix-svelte/renderer";
 import { assertWindowState, instrumentNative, measurePhase, writeResult } from "./common.ts";
 import App from "./SvelteApp.svelte";
 import InlineApp from "./SvelteInline.svelte";
-const SelectedApp = process.env.SVELTE_STYLE_MODE === "inline" ? InlineApp : App;
+import NoStyleApp from "./SvelteNoStyle.svelte";
+const noStyle = process.env.SVELTE_STYLE_MODE === "none";
+const SelectedApp = noStyle ? NoStyleApp :
+  process.env.SVELTE_STYLE_MODE === "inline" ? InlineApp : App;
 import type { GpuixRenderer } from "@gpuix/native";
 
 instrumentNative();
@@ -71,7 +74,7 @@ try {
   await Bun.sleep(700);
   const phases = {
     single: await measure(120, i => app.updateTitle(12, "Song 12 / " + i)),
-    theme: await measure(24, i => app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699")),
+    ...(!noStyle ? { theme: await measure(24, i => app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699")) } : {}),
     offscreen: await measure(200, i => app.updateTitle(5000 + i, "Offscreen " + i)),
     reorder: await measure(24, () => app.rotate()),
     window: await measure(120, i => app.shiftWindow(i + 1)),

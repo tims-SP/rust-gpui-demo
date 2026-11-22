@@ -92,10 +92,32 @@ jobs:
             export BENCH_TRIAL="$trial"
             xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:svelte 2>&1 | tee "results/svelte-trace-$trial.log"
           done
+      - name: Compare completely unstyled Svelte and Solid (3 runs each)
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+          BENCH_CASE: nostyle
+          BENCH_STYLE_MODE: none
+          SVELTE_STYLE_MODE: none
+        run: |
+          set -euo pipefail
+          for trial in 11 12 13; do
+            export BENCH_TRIAL="$trial"
+            if (( trial % 2 == 0 )); then
+              frameworks=(solid svelte)
+            else
+              frameworks=(svelte solid)
+            fi
+            for framework in "${frameworks[@]}"; do
+              xvfb-run -a -s "-screen 0 1280x950x24" \
+                timeout 150s bun run "bench:$framework" 2>&1 | tee "results/$framework-nostyle-$trial.log"
+            done
+          done
       - name: Compare and assert all 10 runs
         run: |
           python3 bench/compare.py
           python3 bench/diagnose.py
+          python3 bench/unstyled_compare.py
+          cat results/UNSTYLED.md >> "$GITHUB_STEP_SUMMARY"
           cat results/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
           cat results/DIAGNOSIS.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw results, logs and screenshots
