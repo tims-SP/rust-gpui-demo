@@ -33,6 +33,7 @@ class Packets(VideoStreamTrack):
                 return last
             await asyncio.sleep(1)
             raise MediaStreamError
+        packet.time_base=self.container.streams.video[0].time_base
         if self.t0 is None:
             self.base=packet.time_base
             self.first_pts=packet.pts

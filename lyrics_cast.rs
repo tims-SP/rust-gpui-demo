@@ -40,6 +40,8 @@ fn main() -> Result<()> {
     let counter=Rc::new(Cell::new(0));
     let state=counter.clone();
     let window=cx.open_window(size(px(w as f32),px(h as f32)),move |_,app| app.new(|_| LyricsView{frame:state,fps,width:w}))?;
+    cx.simulate_window_scale_factor_change(window.into(), 1.0);
+    cx.run_until_parked();
     let mut out=io::stdout().lock();
     let mut csv=BufWriter::new(File::create(&args[5])?);
     writeln!(csv,"frame,scene_ms,capture_ms,write_ms")?;
