@@ -1,0 +1,63 @@
+name: Linux Svelte vs Solid GPUI native benchmark
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      XDG_SESSION_TYPE: x11
+      WINIT_UNIX_BACKEND: x11
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      MESA_VK_DEVICE_SELECT: "10005:0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Mesa Vulkan + X11
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends             xvfb xauth imagemagick mesa-vulkan-drivers vulkan-tools             libx11-xcb1 libxkbcommon-x11-0 libxkbcommon0 libwayland-client0             libfontconfig1 libvulkan1 fonts-noto-cjk libasound2 libssl3
+          mkdir -p results
+          vulkaninfo --summary | tee results/vulkan.txt
+          ls /usr/share/vulkan/icd.d | tee results/vulkan-icds.txt
+      - name: Install exact GPUIX adapters
+        run: |
+          bun install
+          bun pm ls | tee results/dependencies.txt
+      - name: Confirm real Linux native addon loads
+        run: |
+          bun -e 'import { GpuixRenderer } from "@gpuix/native"; if (!GpuixRenderer?.prototype?.applyBatch) throw Error("Native GPUIX addon missing"); console.log("Real GpuixRenderer loaded");'
+      - name: Run Solid native Linux window
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: |
+          xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:solid 2>&1 | tee results/solid.log
+      - name: Run Svelte native Linux window
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+        run: |
+          xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:svelte 2>&1 | tee results/svelte.log
+      - name: Compare and assert both frameworks
+        run: |
+          python3 bench/compare.py
+          cat results/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload raw results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-svelte-solid-gpui-results
+          path: results/
+          if-no-files-found: warn
+          retention-days: 30
