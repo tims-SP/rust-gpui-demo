@@ -62,10 +62,29 @@ jobs:
               echo "::endgroup::"
             done
           done
+      - name: Isolate Solid keyed-For and Svelte direct style with 3 native trials
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          set -euo pipefail
+          for trial in 5 6 7; do
+            export BENCH_TRIAL="$trial"
+            export BENCH_CASE="ids"
+            export SOLID_FOR_MODE="ids"
+            xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:solid 2>&1 | tee "results/solid-ids-$trial.log"
+            unset SOLID_FOR_MODE
+            export BENCH_CASE="inline"
+            export SVELTE_STYLE_MODE="inline"
+            xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:svelte 2>&1 | tee "results/svelte-inline-$trial.log"
+            unset SVELTE_STYLE_MODE
+            unset BENCH_CASE
+          done
       - name: Compare and assert all 10 runs
         run: |
           python3 bench/compare.py
+          python3 bench/diagnose.py
           cat results/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+          cat results/DIAGNOSIS.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw results, logs and screenshots
         if: always()
         uses: actions/upload-artifact@v4

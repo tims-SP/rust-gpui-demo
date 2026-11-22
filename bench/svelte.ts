@@ -3,11 +3,13 @@ import { render } from "gpuix-svelte";
 import { commit, get_native } from "gpuix-svelte/renderer";
 import { assertWindowState, instrumentNative, measurePhase, writeResult } from "./common.ts";
 import App from "./SvelteApp.svelte";
+import InlineApp from "./SvelteInline.svelte";
+const SelectedApp = process.env.SVELTE_STYLE_MODE === "inline" ? InlineApp : App;
 import type { GpuixRenderer } from "@gpuix/native";
 
 instrumentNative();
 try {
-  const app = render(App, { title: "Svelte / GPUI Linux comparison", width: 680, height: 900 }) as {
+  const app = render(SelectedApp, { title: "Svelte / GPUI Linux comparison", width: 680, height: 900 }) as {
     updateTitle: (index: number, title: string) => void;
     changeTheme: (color: string) => void;
     rotate: () => void;

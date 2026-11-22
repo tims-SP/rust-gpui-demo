@@ -2,8 +2,8 @@ import { GpuixRenderer } from "@gpuix/native";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
-type PhaseStats = { batches: number; mutations: number; bytes: number; byOp: Record<string, number> };
-type TimedPhase = PhaseStats & { iterations: number; elapsedMs: number; msPerOperation: number; p50Ms: number; p95Ms: number; p99Ms: number };
+type PhaseStats = { batches: number; mutations: number; bytes: number; byOp: Record<string, number>; probeMs: number; nativeMs: number };
+type TimedPhase = PhaseStats & { iterations: number; elapsedMs: number; msPerOperation: number; p50Ms: number; p95Ms: number; p99Ms: number; updateMs: number; settleMs: number };
 let active: PhaseStats | undefined;
 let installed = false;
 
@@ -14,17 +14,23 @@ export function instrumentNative(): void {
   const original = proto.applyBatch;
   if (typeof original !== "function") throw new Error("Cannot intercept native applyBatch; cannot benchmark FFI");
   proto.applyBatch = function (json: string): number[] {
-    if (active) {
+    const measurement = active;
+    if (measurement) {
+      const t0 = performance.now();
       const entries = JSON.parse(json) as unknown[][];
-      active.batches++;
-      active.mutations += entries.length;
-      active.bytes += Buffer.byteLength(json);
+      measurement.batches++;
+      measurement.mutations += entries.length;
+      measurement.bytes += Buffer.byteLength(json);
       for (const entry of entries) {
         const key = String(entry[0]);
-        active.byOp[key] = (active.byOp[key] ?? 0) + 1;
+        measurement.byOp[key] = (measurement.byOp[key] ?? 0) + 1;
       }
+      measurement.probeMs += performance.now() - t0;
     }
-    return original.call(this, json);
+    const beforeNative = performance.now();
+    const result = original.call(this, json);
+    if (measurement) measurement.nativeMs += performance.now() - beforeNative;
+    return result;
   };
 }
 
@@ -34,16 +40,22 @@ export async function measurePhase(
   settle: () => void
 ): Promise<TimedPhase> {
   if (active) throw new Error("Nested benchmark phases are forbidden");
-  const sample: PhaseStats = { batches: 0, mutations: 0, bytes: 0, byOp: {} };
+  const sample: PhaseStats = { batches: 0, mutations: 0, bytes: 0, byOp: {}, probeMs: 0, nativeMs: 0 };
   active = sample;
   const durations: number[] = [];
+  let updateMs = 0;
+  let settleMs = 0;
   const start = performance.now();
   try {
     for (let i = 0; i < iterations; i++) {
       const t0 = performance.now();
       update(i);
+      const afterUpdate = performance.now();
       settle();
-      durations.push(performance.now() - t0);
+      const afterSettle = performance.now();
+      updateMs += afterUpdate - t0;
+      settleMs += afterSettle - afterUpdate;
+      durations.push(afterSettle - t0);
     }
     // Time only the measured work. Never include a fixed timer in performance numbers.
     const elapsedMs = performance.now() - start;
@@ -53,7 +65,9 @@ export async function measurePhase(
     const percentile = (p: number) => +sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)]!.toFixed(4);
     return { ...sample, iterations, elapsedMs: +elapsedMs.toFixed(3),
       msPerOperation: +(elapsedMs / iterations).toFixed(4),
-      p50Ms: percentile(0.5), p95Ms: percentile(0.95), p99Ms: percentile(0.99) };
+      p50Ms: percentile(0.5), p95Ms: percentile(0.95), p99Ms: percentile(0.99),
+      updateMs: +updateMs.toFixed(4), settleMs: +settleMs.toFixed(4),
+      probeMs: +sample.probeMs.toFixed(4), nativeMs: +sample.nativeMs.toFixed(4) };
   } finally {
     active = undefined;
   }
@@ -117,7 +131,9 @@ export async function writeResult(framework: string, phases: Record<string, Time
   mkdirSync("results", { recursive: true });
   const trial = Number(process.env.BENCH_TRIAL ?? "0");
   if (!Number.isInteger(trial) || trial < 0 || trial > 100) throw new Error("Invalid BENCH_TRIAL");
-  const png = "results/" + framework + "-" + trial + ".png";
+  const suffix = process.env.BENCH_CASE ? "-" + process.env.BENCH_CASE : "";
+  const name = framework + suffix + "-" + trial;
+  const png = "results/" + name + ".png";
   const snapshot = spawnSync("import", ["-window", "root", png], { timeout: 15000 });
   if (snapshot.status !== 0) {
     console.error("X11 screenshot failed", snapshot.stderr?.toString());
@@ -128,12 +144,12 @@ export async function writeResult(framework: string, phases: Record<string, Time
   if (imageStats.status !== 0 || !Number.isFinite(deviation) || deviation <= 0) {
     throw new Error("X11 screenshot is empty/unreadable (stddev=" + deviation + "): " + imageStats.stderr?.toString());
   }
-  const data = { framework, runtime: "Bun", platform: process.platform,
+  const data = { framework, testCase: process.env.BENCH_CASE ?? "baseline", runtime: "Bun", platform: process.platform,
     backend: "real GpuixRenderer Linux window (Xvfb + Mesa Vulkan software rasterizer)",
     trial, rows: 48, datasetRows: 10000, phases,
     retainedTreeBytes: Buffer.byteLength(tree), visibleSongs: visibleSongs.length,
     memory: { rssBytes: process.memoryUsage().rss, heapUsedBytes: process.memoryUsage().heapUsed },
     screenshot: png, screenshotDeviation: deviation };
-  writeFileSync("results/" + framework + "-" + trial + ".json", JSON.stringify(data, null, 2) + "\n");
+  writeFileSync("results/" + name + ".json", JSON.stringify(data, null, 2) + "\n");
   console.log("BENCHMARK_RESULT=" + JSON.stringify(data));
 }

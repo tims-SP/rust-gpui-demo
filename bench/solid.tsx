@@ -9,9 +9,13 @@ const base = Array.from({ length: 10000 }, (_, id) => ({ id, title: "Song " + id
 const [tracks, setTracks] = createStore(base);
 const [order, setOrder] = createSignal(base.slice(0, 48).map(row => row.id));
 const [windowStart, setWindowStart] = createSignal(0);
+const keyMode = process.env.SOLID_FOR_MODE === "ids";
 const visibleRows = createMemo(() => windowStart() === 0
   ? order().map(id => tracks[id]!)
   : Array.from({ length: 48 }, (_, index) => tracks[windowStart() + index]!));
+const visibleKeys = createMemo(() => keyMode
+  ? (windowStart() === 0 ? order() : Array.from({ length: 48 }, (_, index) => windowStart() + index))
+  : visibleRows());
 const [accent, setAccent] = createSignal("#8b5cf6");
 let native: GpuixRenderer | undefined;
 
@@ -19,11 +23,12 @@ function App() {
   native = useGpuixRequired() as GpuixRenderer;
   return (
     <div style={{ display: "flex", flexDirection: "column", width: "100%", height: "100%", padding: 20, gap: 2, backgroundColor: "#101620" }}>
-      <For each={visibleRows()}>{track => (
-        <div style={{ display: "flex", flexDirection: "row", height: 12, padding: 3 }}>
-          <text style={{ color: accent(), fontSize: 12 }}>{track.title}</text>
-        </div>
-      )}</For>
+      <For each={visibleKeys()}>{track => {
+        const id = typeof track === "number" ? track : track.id;
+        return <div style={{ display: "flex", flexDirection: "row", height: 12, padding: 3 }}>
+          <text style={{ color: accent(), fontSize: 12 }}>{tracks[id]!.title}</text>
+        </div>;
+      }}</For>
     </div>
   );
 }
