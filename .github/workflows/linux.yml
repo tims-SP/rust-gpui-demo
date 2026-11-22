@@ -1,0 +1,62 @@
+name: Linux GPUI casting benchmark
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
+      CARGO_PROFILE_RELEASE_OPT_LEVEL: "2"
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: d31d1074a07b7bbaa43a52fef7847a00dd491baf
+          path: zed
+          persist-credentials: false
+      - name: Install Linux graphics and media dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libx11-xcb-dev libxkbcommon-x11-dev libwayland-dev libfontconfig1-dev libasound2-dev libssl-dev libzstd-dev libvulkan1 mesa-vulkan-drivers vulkan-tools fonts-noto-cjk ffmpeg libclang-dev libglib2.0-dev libsqlite3-dev libstdc++-14-dev
+          mkdir -p results
+          vulkaninfo --summary > results/vulkan.txt
+          df -h .
+      - name: Build retained GPUI View
+        working-directory: zed
+        run: |
+          version=$(python -c 'import tomllib;print(tomllib.load(open("rust-toolchain.toml","rb"))["toolchain"]["channel"])')
+          rustup toolchain install "$version" --profile minimal
+          echo "RUSTUP_TOOLCHAIN=$version" >> "$GITHUB_ENV"
+          mkdir -p crates/gpui_wgpu/src/bin
+          cp ../lyrics_cast.rs crates/gpui_wgpu/src/bin/lyrics_cast.rs
+          cargo +"$version" build --locked --release -p gpui_wgpu --features test-support --bin lyrics_cast
+          cp target/release/lyrics_cast ../results/lyrics_cast
+          strip ../results/lyrics_cast
+      - name: Measure real GPUI readback and encode MP4
+        run: |
+          unset DISPLAY WAYLAND_DISPLAY
+          python measure.py results/lyrics_cast
+      - name: Send the encoded clips over local WebRTC and verify decoded frames
+        run: |
+          python -m venv "$RUNNER_TEMP/rtc-env"
+          "$RUNNER_TEMP/rtc-env/bin/pip" install 'aiortc>=1.14,<2'
+          for f in results/*.mp4; do "$RUNNER_TEMP/rtc-env/bin/python" webrtc.py "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-gpui-cast
+          path: results/
+          if-no-files-found: warn
+          retention-days: 14
