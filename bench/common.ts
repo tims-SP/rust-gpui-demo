@@ -56,11 +56,15 @@ export async function writeResult(framework: string, phases: Record<string, Time
   if (Object.values(phases).some(p => p.batches === 0 || p.mutations === 0)) {
     throw new Error("Native mutation probe recorded zero batches: not a valid comparison");
   }
-  const getTree = (native as unknown as { getTreeJson?: () => string }).getTreeJson;
-  if (typeof getTree !== "function") throw new Error("GpuixRenderer.getTreeJson unavailable");
-  const tree = getTree.call(native);
-  if (typeof tree !== "string" || !tree.includes("Song 12 / 119")) {
-    throw new Error("Native retained tree is missing the expected updated song title; received " + String(tree).slice(0, 700));
+  const live = native as unknown as {
+    getAutomationTree?: (forceRender?: boolean) => string;
+    getPaintedText?: () => string[];
+  };
+  if (typeof live.getAutomationTree !== "function") throw new Error("Linux live renderer has no automation tree API");
+  const tree = live.getAutomationTree(true);
+  const painted = typeof live.getPaintedText === "function" ? live.getPaintedText() : [];
+  if (!String(tree).includes("Song 12 / 119") && !painted.some(t => t.includes("Song 12 / 119"))) {
+    throw new Error("Live GPUI tree/paint missing final song title; tree " + String(tree).slice(0, 600) + "; painted " + JSON.stringify(painted.slice(0, 8)));
   }
   mkdirSync("results", { recursive: true });
   const snapshot = spawnSync("import", ["-window", "root", "results/" + framework + ".png"], { timeout: 15000 });
