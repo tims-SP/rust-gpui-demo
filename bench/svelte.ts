@@ -1,7 +1,7 @@
 import { flushSync } from "svelte";
 import { render } from "gpuix-svelte";
 import { commit, get_native } from "gpuix-svelte/renderer";
-import { instrumentNative, measurePhase, writeResult } from "./common.ts";
+import { assertWindowState, instrumentNative, measurePhase, writeResult } from "./common.ts";
 import App from "./SvelteApp.svelte";
 import type { GpuixRenderer } from "@gpuix/native";
 
@@ -20,9 +20,11 @@ try {
   const phases = {
     single: await measurePhase(120, i => app.updateTitle(12, "Song 12 / " + i), settle),
     theme: await measurePhase(24, i => app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699"), settle),
+    offscreen: await measurePhase(200, i => app.updateTitle(5000 + i, "Offscreen " + i), settle),
     reorder: await measurePhase(24, () => app.rotate(), settle),
     window: await measurePhase(120, i => app.shiftWindow(i + 1), settle),
   };
+  assertWindowState(native, 120);
   app.shiftWindow(0);
   settle();
   await Bun.sleep(400);

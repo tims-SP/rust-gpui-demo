@@ -7,7 +7,8 @@ were removed from the current worktree; the Git history is preserved.
 
 - `@gpuix/native` 0.11.0 is shared by `@gpuix/solid` 0.11.0 and `gpuix-svelte` 0.6.0.
 - Same 10,000-track backing dataset; 48 rendered rows.
-- 120 single-row edits, 24 theme updates, 24 list rotations and 120 window movements.
+- 120 single-row edits, 24 theme updates, 200 offscreen edits, 24 list rotations and 120 window movements.
+- Native must show exactly songs 120..167 after moving the visible window; 200 edits to non-visible songs must produce **zero** Native Mutation.
 - **5 independent runs per framework**, alternating execution order.
 - Measures end-to-end JS update + instrumented Native Mutation submission, including per-operation P95, batch and byte counts.
 - Checks the real Linux GPUI Automation Tree, final list order and nonblank screenshot.

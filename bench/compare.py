@@ -18,14 +18,17 @@ for framework in ("solid", "svelte"):
         reports.append(r)
     results[framework] = reports
 
-scenarios = ("single", "theme", "reorder", "window")
+scenarios = ("single", "theme", "offscreen", "reorder", "window")
 table = []
 for scenario in scenarios:
     cases = {}
     for framework, reports in results.items():
         phases = [r["phases"][scenario] for r in reports]
         assert len({p["iterations"] for p in phases}) == 1
-        assert all(p["batches"] > 0 and p["mutations"] > 0 for p in phases)
+        if scenario == "offscreen":
+            assert all(p["batches"] == 0 and p["mutations"] == 0 for p in phases)
+        else:
+            assert all(p["batches"] > 0 and p["mutations"] > 0 for p in phases)
         med = lambda key: round(statistics.median(p[key] for p in phases), 4)
         cases[framework] = {
             "iterations": phases[0]["iterations"],
@@ -53,6 +56,7 @@ summary = {
         "5 independent processes help expose noise but do not equal hardware-controlled confidence intervals.",
         "Measurements include instrumented mutation JSON parsing and synchronous FFI, not native frame time.",
         "Window scenario uses 48-row application windowing over 10000 data records, not GPUI native virtual-list.",
+        "Offscreen edits must produce zero Native Mutation and the 120..167 window must be visible in the Rust live tree.",
         "Svelte CSS variable/theme versus Solid inline reactive style is an end-to-end strategy comparison.",
         "Custom Rust ArtworkFlow component and Android/iOS are not covered."
     ]

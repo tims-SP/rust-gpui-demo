@@ -59,9 +59,34 @@ export async function measurePhase(
   }
 }
 
+export function assertWindowState(native: GpuixRenderer, expectedStart: number, count = 48): void {
+  const live = native as unknown as { getAutomationTree?: (forceRender?: boolean) => string };
+  if (typeof live.getAutomationTree !== "function") throw new Error("Native live tree is unavailable");
+  const tree = JSON.parse(live.getAutomationTree(true));
+  const labels: string[] = [];
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    const item = node as { text?: unknown; children?: unknown };
+    if (typeof item.text === "string" && /^Song [0-9]+(?: \/ [0-9]+)?$/.test(item.text)) labels.push(item.text);
+    if (Array.isArray(item.children)) item.children.forEach(visit);
+  };
+  visit(tree);
+  if (labels.length !== count || labels[0] !== "Song " + expectedStart ||
+      labels[count - 1] !== "Song " + (expectedStart + count - 1)) {
+    throw new Error("Native list window mismatch; expected " + expectedStart + ".." +
+      (expectedStart + count - 1) + ", got " + JSON.stringify(labels.slice(0, 55)));
+  }
+}
+
 export async function writeResult(framework: string, phases: Record<string, TimedPhase>, native: GpuixRenderer): Promise<void> {
-  if (Object.values(phases).some(p => p.batches === 0 || p.mutations === 0)) {
-    throw new Error("Native mutation probe recorded zero batches: not a valid comparison");
+  for (const [name, phase] of Object.entries(phases)) {
+    if (name === "offscreen") {
+      if (phase.mutations !== 0 || phase.batches !== 0) {
+        throw new Error("Offscreen data edits unexpectedly emitted Native mutations: " + JSON.stringify(phase));
+      }
+    } else if (phase.batches === 0 || phase.mutations === 0) {
+      throw new Error("No Native mutations for " + name + ": not a valid comparison");
+    }
   }
   const live = native as unknown as {
     getAutomationTree?: (forceRender?: boolean) => string;

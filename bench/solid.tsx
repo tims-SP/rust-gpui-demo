@@ -2,7 +2,7 @@ import { createMemo, createSignal, For } from "solid-js";
 import { createStore } from "solid-js/store";
 import { render, useGpuixRequired, resetRender } from "@gpuix/solid";
 import type { GpuixRenderer } from "@gpuix/native";
-import { instrumentNative, measurePhase, writeResult } from "./common.ts";
+import { assertWindowState, instrumentNative, measurePhase, writeResult } from "./common.ts";
 
 instrumentNative();
 const base = Array.from({ length: 10000 }, (_, id) => ({ id, title: "Song " + id }));
@@ -35,9 +35,11 @@ try {
   const phases = {
     single: await measurePhase(120, i => setTracks(12, "title", "Song 12 / " + i), () => root.flushSync(() => {})),
     theme: await measurePhase(24, i => setAccent(i % 2 ? "#8b5cf6" : "#ff6699"), () => root.flushSync(() => {})),
+    offscreen: await measurePhase(200, i => setTracks(5000 + i, "title", "Offscreen " + i), () => root.flushSync(() => {})),
     reorder: await measurePhase(24, () => setOrder(rows => [...rows.slice(1), rows[0]!]), () => root.flushSync(() => {})),
     window: await measurePhase(120, i => setWindowStart(i + 1), () => root.flushSync(() => {})),
   };
+  assertWindowState(native, 120);
   setWindowStart(0);
   root.flushSync(() => {});
   await Bun.sleep(400);
