@@ -66,3 +66,7 @@ An additional instrumented Svelte run records `flushSync()`, `commit()`, and ind
 ## Static-style control
 
 Removing **all** styles left a blank native X11 frame for Svelte; that result was rejected as a non-rendering app. The revised valid control keeps immutable geometry and text-color style attributes so GPUI displays real UI. It removes **all <style> blocks, class selectors, CSS variables, and runtime style binding**. Both frameworks run three independent static-style trials, while the five styled baseline trials still run. The theme phase is omitted in static style because no visible theme mutation exists. See `results/UNSTYLED.md` and `results/UNSTYLED.json` for actual performance deltas.
+
+## CSS ablation results
+
+[See the real Linux comparison of full CSS versus fixed-only styles](docs/STYLE_ABLATION.md). Removing Svelte CSS sheets, variables and dynamic styles did not produce a significant update-speed improvement. An entirely style-free version rendered a blank window and was rejected.
