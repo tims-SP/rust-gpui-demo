@@ -73,6 +73,9 @@ jobs:
             if grep -Eq '\bimport\(' "dist/engines/$fw.cjs"; then exit 1; fi
           done
           sha256sum dist/engines/*.cjs | tee results/bundle-sha256.txt
+          echo "Hermes failing location diagnostic (solid.cjs:1435-1465)"
+          awk 'NR>=1435 && NR<=1465 {printf "%d %s\\n",NR,$0}' dist/engines/solid.cjs
+          grep -nE 'require\\(' dist/engines/solid.cjs | head -n 35 || true
       - name: Run both compiled applications in both engines, 3 native trials
         run: |
           set -euo pipefail
@@ -96,5 +99,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: hermes-vs-bun-linux-native
-          path: results/
+          path: |
+            results/
+            dist/engines/*.cjs
           retention-days: 30
