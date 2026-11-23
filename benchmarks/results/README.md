@@ -16,8 +16,8 @@ The source for every GPUI view is a precomputed Hermes scene JSON.
 | web | solid | PASS |  10815 µs | 25945 µs | 88085 µs | — | [Run 45266653392](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45266653392) |
 | ios | svelte | PASS | — | — | — | 15556 ms | [Run 45242919984](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45242919984) |
 | ios | solid | PASS | — | — | — | 3321 ms | [Run 45242919984](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45242919984) |
-| android | svelte | UNVERIFIED | — | — | — | — | Unverified |
-| android | solid | UNVERIFIED | — | — | — | — | Unverified |
+| android | svelte | PASS | — | — | — | 7402 ms (2 polls) | [Run 45283713120](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45283713120) |
+| android | solid | PASS | — | — | — | 7140 ms (2 polls) | [Run 45283713120](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45283713120) |
 
 **Metric definitions:** P50/P95/P99 = elapsed microseconds between scheduled
 GPUI state mutation and the next `Render` callback. This excludes real
@@ -28,7 +28,9 @@ framework latency. iOS/Android G1 includes screenshot polling and cold
 boot effects, and is not a clean Svelte-vs-Solid speed comparison.
 
 **Measured cells:** 6/12.
-**Rendered cells:** 10/12.
+**Rendered cells:** 12/12.
 **Full six-platform end-to-end benchmark:** NOT COMPLETE.
 
 **Web evidence update (2026-11-23 UTC):** [Run 45266653392](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45266653392), commit `ab466b89`, artifact `gpui-web-official-canvas-svelte-solid`: both Svelte and Solid JSON files report `status=PASS`, `scheduled_updates=120`, `applied_updates=120`, with 34/35 render callbacks and screenshot PNGs. These are GPUI timer-driven replay callback timings, **not** live Hermes HBC/JSI or GPU Present timings. Chromium console reports a wgpu resize poll timeout warning, but the replay completion markers and metrics were emitted.
+
+**Android GLES render evidence (2026-11-23 UTC):** [Run 45283713120](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45283713120), branch `fix/android-gles-render-fallback`, commit `7d416c782`, artifact `android-emulator-hermes-svelte-solid-evidence`. Downloaded and inspected `svelte-g1.json`, `solid-g1.json`, screenshots `svelte.png` and `solid.png` (1080×2340), emulator logcat and APKs. Both JSON files state `RENDER_PASS` with pixel coverage 92.87%/92.90%, 59 bands. These are **precomputed Hermes scenes**, with `actual_hermes_vm_on_device=false` and `live_jsi_to_gpui=false`; screenshot readiness includes polling and cannot be used as P50/P95/P99. The GLES fix remains on a separate branch, not merged to `main` or PR #9.
