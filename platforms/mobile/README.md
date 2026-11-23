@@ -28,9 +28,9 @@ markers and live app PIDs. A previous successful replay
 [#45282165716](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45282165716)
 used the *same binary APKs* built in CI
 [#45280068480](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45280068480)
-to isolate the screenshot verifier fix before the final clean build. iOS Svelte/Solid simulator G1 had
-previously passed in CI
-[#45278354140](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45278354140).
+to isolate the screenshot verifier fix before the final clean build. iOS Svelte/Solid simulator G1 passed in CI
+[#45283316517](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45283316517)
+(also independently reproduced in #45278354140).
 
 **Not yet proven:** HBC compiled/loaded *inside* Android/iOS, UI event
 roundtrips, full frame timings or live JSI-to-Rust Mutation delivery.

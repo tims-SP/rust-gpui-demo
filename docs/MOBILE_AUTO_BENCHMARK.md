@@ -1,6 +1,6 @@
 # Hermes + Svelte/Solid six-platform automatic execution — implementation contract
 
-Status: **G1 real mobile render evidence exists for Android Svelte/Solid (fresh emulator CI #45283713120) and iOS Svelte/Solid (simulator CI #45278354140); G2/G3 are specified but NOT implemented.** An earlier Android G1 replay CI #45282165716 reused unchanged APKs to isolate the screenshot verifier fix; clean CI #45283713120 subsequently rebuilt both APKs and verified two fresh real screenshots. This document is not evidence of complete six-platform performance benchmarking.
+Status: **G1 real mobile render evidence exists for Android Svelte/Solid (fresh emulator CI #45283713120) and iOS Svelte/Solid (fresh simulator CI #45283316517); G2/G3 are specified but NOT implemented.** An earlier Android G1 replay CI #45282165716 reused unchanged APKs to isolate the screenshot verifier fix; clean CI #45283713120 subsequently rebuilt both APKs and verified two fresh real screenshots. This document is not evidence of complete six-platform performance benchmarking.
 
 ## Objective and non-objectives
 
