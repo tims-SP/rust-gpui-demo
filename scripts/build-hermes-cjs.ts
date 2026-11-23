@@ -8,7 +8,7 @@ const requireFromBuild = createRequire(import.meta.url);
 const nativeJsResolver: BunPlugin = {
   name: "bundle-gpuix-js-host-but-external-native-node",
   setup(build) {
-    build.onResolve({filter: /^@gpuix\\/native(?:\\/.*)?$/}, (args) => {
+    build.onResolve({filter: /^@gpuix[/]native([/].*)?$/}, (args) => {
       if(args.path === "@gpuix/native") return {path: args.path, external: true};
       return {path: requireFromBuild.resolve(args.path)};
     });
