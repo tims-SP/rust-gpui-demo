@@ -25,6 +25,9 @@ PY
     cd "$example/ios"
     xcodegen generate --spec project.yml
 )
+# GitHub hosted macOS uses -D warnings; the pinned mobile fork has harmless
+# platform-specific dead_code (open_main_window). Keep source unchanged.
+export RUSTFLAGS="-A dead_code"
 for framework in svelte solid; do
     export GPUI_HERMES_FEATURES=""
     if [[ "$framework" == "solid" ]]; then
