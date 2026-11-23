@@ -28,5 +28,15 @@ const expected={count:256,start:40,theme:"light",renderedRows:48};
      throw Error("Wrong "+f+" Hermes scene result: "+JSON.stringify(result.final));
    fs.writeFileSync(path.join("results/hermes-web",f+".json"),JSON.stringify(result,null,2));
    console.log("HERMES_WEB_HBC_FRAMEWORK_PASS:"+f+" mutations="+result.mutations);
+   const before=output.length;
+   const second=vm.ccall("hermes_run_hbc_file","number",["string"],["/shim.hbc"]);
+   if(second===-6)throw Error("Hermes event delivery failed: "+JSON.stringify(errors));
+   const tail=output.slice(before);
+   const marker=tail.find(x=>x.startsWith("HERMES_INTERACTIVE_RESULT:"+f+":1001:"));
+   const forwarded=tail.filter(x=>x.startsWith("HERMES_MUTATION_BATCH:"))
+     .map(x=>JSON.parse(x.slice("HERMES_MUTATION_BATCH:".length)));
+   if(!marker||forwarded.length!==1||!forwarded[0].some(op=>op[0]==="text"))
+     throw Error("Hermes JSI event did not forward a genuine text mutation: "+JSON.stringify(tail.slice(-4)));
+   console.log("HERMES_WEB_INTERACTIVE_JSI_PASS:"+f+" mutations="+forwarded[0].length);
  }
 })().catch(e=>{console.error(e.stack);process.exitCode=1});
