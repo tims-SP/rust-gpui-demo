@@ -72,7 +72,14 @@ jobs:
             done
             grep -q "GPUI_IMPORTED_HERMES_SCENE_OK:$f" "results/gpui-linux/$f-runtime.log"
             grep -q GPUI_WINDOW_CREATED "results/gpui-linux/$f-runtime.log"
-            sleep 4
+            for frame in $(seq 1 22); do
+              if grep -q "GPUI_REPLAY_BENCH_PASS:$f" "results/gpui-linux/$f-runtime.log"; then break; fi
+              if ! kill -0 "$pid" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            python3 tools/extract-gpui-replay.py \
+              --log "results/gpui-linux/$f-runtime.log" --framework "$f" \
+              --platform linux --out "results/gpui-linux/$f-metrics.json"
             import -window root "results/gpui-linux/$f.png"
             kill "$pid" 2>/dev/null || true
             wait "$pid" 2>/dev/null || true
