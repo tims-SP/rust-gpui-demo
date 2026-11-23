@@ -6,10 +6,10 @@ The source for every GPUI view is a precomputed Hermes scene JSON.
 
 | Platform | Framework | Actual GPUI scene | Update→Render P50 | P95 | Mobile G1 readiness | CI evidence |
 |---|---|---|---:|---:|---:|---|
-| linux | svelte | PASS | — | — | — | [Run 45212271704](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45212271704) |
-| linux | solid | PASS | — | — | — | [Run 45212271704](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45212271704) |
-| windows | svelte | PASS | — | — | — | [Run 45203114141](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45203114141) |
-| windows | solid | PASS | — | — | — | [Run 45203114141](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45203114141) |
+| linux | svelte | PASS | 1027 µs | 16127 µs | — | [Run 45248284872](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45248284872) |
+| linux | solid | PASS | 1319 µs | 16227 µs | — | [Run 45248284872](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45248284872) |
+| windows | svelte | PASS | 2258 µs | 16047 µs | — | [Run 45248296457](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45248296457) |
+| windows | solid | PASS | 2533 µs | 16891 µs | — | [Run 45248296457](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45248296457) |
 | macos | svelte | PASS | — | — | — | [Run 45212271889](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45212271889) |
 | macos | solid | PASS | — | — | — | [Run 45212271889](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45212271889) |
 | web | svelte | PASS | — | — | — | [Run 45204482618](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45204482618) |
@@ -27,6 +27,6 @@ within the same run and don't treat mobile G1 polling time as FPS or
 framework latency. iOS/Android G1 includes screenshot polling and cold
 boot effects, and is not a clean Svelte-vs-Solid speed comparison.
 
-**Measured cells:** 0/12.
+**Measured cells:** 4/12.
 **Rendered cells:** 10/12.
 **Full six-platform end-to-end benchmark:** NOT COMPLETE.
