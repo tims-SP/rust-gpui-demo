@@ -39,7 +39,7 @@ for name in sys.argv[1:]:
         continue
     if 'mavenCentral()' not in s:
         raise SystemExit(f"Expected Maven Central repository declaration in {p}")
-    p.write_text(s.replace('mavenCentral()', mirror+'\\n        mavenCentral()'))
+    p.write_text(s.replace('mavenCentral()', mirror+'\n        mavenCentral()'))
     print(f"GPUI_ANDROID_MAVEN_CENTRAL_MIRROR_ENABLED:{p}")
 PYMIRROR
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
