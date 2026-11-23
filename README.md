@@ -99,3 +99,7 @@ Results are in `results/ENGINE.md` and `results/ENGINE.json`.
 ## List proxy versus slice 2×2 ablation
 
 [Run the dedicated Linux factorial experiment](https://github.com/tims-SP/rust-gpui-demo/actions/workflows/list-factorial.yml). Four pre-warmed variants isolate `$state.raw(order)` versus index-based window construction without changing styles or native mutations. Results are in the `LIST_FACTORIAL.md` Actions artifact and must pass Rust live tree/order and X11 screenshot checks.
+
+## Confirmed causes after warmed factorial and JSC profiling
+
+[The verified, factor-isolated bottleneck findings](docs/HOTPATH_FINDINGS.md#follow-up-separate-proxy-slice-and-remaining-warmed-cpu-work) now separate `$state.raw` order arrays from deep-reactive `slice()`, compare 20 real Linux native runs, and profile remaining Svelte Core / GPUI Shadow Tree self-samples in six additional verified processes. Artifacts and correction history are linked in the report.
