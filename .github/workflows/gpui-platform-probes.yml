@@ -4,10 +4,21 @@ on:
     branches: [main]
     paths: ['.github/workflows/gpui-platform-probes.yml']
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Run only the mobile test being debugged, or all platform probes
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - android-avd
+          - ios-simulator
 permissions:
   contents: read
 jobs:
   desktop-gpui-compile:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +53,7 @@ jobs:
         shell: bash
         run: echo "GPUI_DESKTOP_COMPILE_PASS:${{ matrix.label }}"
   ios-gpui-compile:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -61,6 +73,7 @@ jobs:
           cargo check -p gpui_ios --target aarch64-apple-ios-sim
           echo GPUI_IOS_BACKEND_COMPILE_PASS
   android-gpui-mobile-compile:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -87,6 +100,7 @@ jobs:
 
 
   android-gpui-mobile-apk:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -143,6 +157,7 @@ jobs:
 
 
   android-two-hermes-scenes-apk:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -214,6 +229,7 @@ jobs:
 
 
   ios-two-hermes-scenes-simulator:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all' || inputs.scope == 'ios-simulator'
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -261,6 +277,7 @@ jobs:
 
 
   android-hermes-scenes-emulator:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all' || inputs.scope == 'android-avd'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
