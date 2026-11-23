@@ -1,8 +1,9 @@
-import {assertScene,flush,snapshot} from "./scene.js";
+import {assertScene,assertEventClicks,assertReorder,dispatchEvent,flush,snapshot} from "./scene.js";
 export async function runBenchmark(framework,settle){
   if(typeof globalThis.__gpuiDrive!=="function")throw Error("Component not mounted");
   await settle();
   assertScene(0,0,"light");
+  assertEventClicks(0);
   const initMutations=flush().length;
   const measurements={};
   let mutations=0;
@@ -17,7 +18,15 @@ export async function runBenchmark(framework,settle){
   await measure("counter",256,i=>globalThis.__gpuiDrive("counter",i));
   await measure("window",40,i=>globalThis.__gpuiDrive("window",i));
   await measure("theme",50,i=>globalThis.__gpuiDrive("theme",i%2?"dark":"light"));
+  await measure("event_roundtrip",1000,()=>dispatchEvent("event-button"));
+  assertEventClicks(1000);
+  await measure("keyed_reorder",20,()=>globalThis.__gpuiDrive("reorder"));
+  assertReorder();
+  globalThis.__gpuiDrive("collapse");
+  await settle();
+  mutations+=flush().length;
   const final=assertScene(256,40,"light");
+  assertEventClicks(1000);
   const result={framework,initMutations,mutations,measurements,final,scene:snapshot()};
   console.log("BENCH_RESULT:"+JSON.stringify(result));
   console.log("GPUI_SCENE_OK:"+framework);

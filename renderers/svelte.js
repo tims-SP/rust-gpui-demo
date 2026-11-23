@@ -1,5 +1,5 @@
 import {createRenderer} from "svelte/renderer";
-import {makeNode,attach,detach,changeText,setAttr,removeAttr} from "../shared/scene.js";
+import {makeNode,attach,detach,changeText,setAttr,removeAttr,setListener} from "../shared/scene.js";
 export default createRenderer({
   createFragment(){return makeNode("fragment");},
   createElement(name){return makeNode("element",name);},
@@ -18,6 +18,6 @@ export default createRenderer({
   getParent(n){return n.parent;},
   insert(parent,node,anchor){attach(parent,node,anchor);},
   remove(n){detach(n);},
-  addEventListener(n,k,handler){(n.listeners[k]??=new Set()).add(handler);},
-  removeEventListener(n,k,handler){n.listeners[k]?.delete(handler);}
+  addEventListener(n,k,handler){setListener(n,k,handler,true);},
+  removeEventListener(n,k,handler){setListener(n,k,handler,false);}
 });

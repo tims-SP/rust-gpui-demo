@@ -1,11 +1,17 @@
 import {createRenderer} from "solid-js/universal";
-import {makeNode,attach,detach,changeText,setAttr,removeAttr} from "../shared/scene.js";
+import {makeNode,attach,detach,changeText,setAttr,removeAttr,setListener} from "../shared/scene.js";
 export const {render,effect,memo,createComponent,createElement,createTextNode,
   insertNode,insert,spread,setProp,mergeProps,use}=createRenderer({
   createElement(name){return makeNode("element",name);},
   createTextNode(t){return makeNode("text","",t);},
   replaceText(n,t){changeText(n,t);},
-  setProperty(n,k,v){if(v===undefined||v===null)removeAttr(n,k);else setAttr(n,k,v);},
+  setProperty(n,k,v,previous){
+    if(/^on[A-Z]/.test(k)){
+      const event=k.slice(2).toLowerCase();
+      if(typeof previous==="function")setListener(n,event,previous,false);
+      if(typeof v==="function")setListener(n,event,v,true);
+    }else if(v===undefined||v===null)removeAttr(n,k);else setAttr(n,k,v);
+  },
   insertNode(parent,node,anchor){attach(parent,node,anchor);},
   removeNode(parent,node){if(node.parent!==parent)throw Error("Remove parent mismatch");detach(node);},
   isTextNode(n){return n.type==="text";},
