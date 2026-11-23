@@ -14,8 +14,14 @@ on:
           - all
           - android-avd
           - ios-simulator
+      reuse_android_apks_run_id:
+        description: Optional previous Android run ID to replay exact APKs without rebuilding
+        required: false
+        type: string
+        default: ''
 permissions:
   contents: read
+  actions: read
 jobs:
   desktop-gpui-compile:
     if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
@@ -309,11 +315,27 @@ jobs:
       - name: Verify Hermes scenes and G1 auto-probe unit tests
         run: |
           bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
-          python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-pil
+          python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v
       - name: Build two independent Android x86_64 AVD APKs
+        if: github.event_name != 'workflow_dispatch' || inputs.reuse_android_apks_run_id == ''
         run: bash platforms/mobile/build-android-emulator.sh
+      - name: Reuse identical emulator APKs from a prior run (renderer code unchanged)
+        if: github.event_name == 'workflow_dispatch' && inputs.reuse_android_apks_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: android-emulator-hermes-svelte-solid-evidence
+          run-id: ${{ inputs.reuse_android_apks_run_id }}
+          github-token: ${{ github.token }}
+          path: results/android-emulator
+      - name: Verify replayed APKs and print their SHA256
+        if: github.event_name == 'workflow_dispatch' && inputs.reuse_android_apks_run_id != ''
+        run: |
+          test -s results/android-emulator/svelte.apk
+          test -s results/android-emulator/solid.apk
+          sha256sum results/android-emulator/{svelte,solid}.apk
+          echo "GPUI_ANDROID_REUSED_APK_SOURCE_RUN=${{ inputs.reuse_android_apks_run_id }}"
       - name: Enable KVM on hosted Ubuntu runner
         shell: bash
         run: |
