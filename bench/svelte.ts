@@ -2,6 +2,7 @@ import { flushSync } from "svelte";
 import { render, renderer } from "gpuix-svelte";
 import { commit, get_native } from "gpuix-svelte/renderer";
 import { assertWindowState, instrumentNative, measurePhase, writeResult } from "./common.ts";
+import { collectHotpathProfiles } from "./hotpath.ts";
 import App from "./SvelteApp.svelte";
 import InlineApp from "./SvelteInline.svelte";
 import StaticApp from "./SvelteStatic.svelte";
@@ -72,6 +73,18 @@ try {
     } finally { activeTrace = null; }
   };
   await Bun.sleep(700);
+  collectHotpathProfiles("svelte", [
+    { name: "single", iterations: 4800,
+      run: i => { app.updateTitle(12, "Song 12 / " + i); settle(); } },
+    { name: "theme", iterations: 1920,
+      run: i => { app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699"); settle(); } },
+    { name: "reorder", iterations: 1536,
+      run: () => { app.rotate(); settle(); } },
+    { name: "window", iterations: 2400,
+      run: i => { app.shiftWindow((i % 120) + 1); settle(); } },
+  ]);
+  app.shiftWindow(0);
+  settle();
   const phases = {
     single: await measure(120, i => app.updateTitle(12, "Song 12 / " + i)),
     ...(!staticStyle ? { theme: await measure(24, i => app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699")) } : {}),

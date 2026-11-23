@@ -83,3 +83,7 @@ Results are in `results/ENGINE.md` and `results/ENGINE.json`.
 ## Confirmed engine/runtime diagnosis
 
 [Runtime verification and development-condition performance isolation](docs/ROOT_CAUSE.md#follow-up-are-different-javascript-engines-responsible) confirms that both applications run Bun 1.4.5/JavaScriptCore; Svelte's CLI adds a `development` export condition, which explains some but not all of the performance gap. Actual data: [Action #45088146436](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45088146436).
+
+## CPU profiling of real JS update paths
+
+`hotpath-profile.yml` uses Bun's JavaScriptCore `bun:jsc.profile()` to collect CPU samples **only during warmed update loops** on the Linux GPUIX native window. It profiles single-row state changes, theme updates, keyed list rotations and visible-window shifts in both frameworks. Profiles and actual screenshots are uploaded as a workflow artifact. The tracer is active only when `HOTPATH_PROFILE=1` and is not used in the standard benchmark.

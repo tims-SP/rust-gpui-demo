@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store";
 import { render, useGpuixRequired, resetRender } from "@gpuix/solid";
 import type { GpuixRenderer } from "@gpuix/native";
 import { assertWindowState, instrumentNative, measurePhase, writeResult } from "./common.ts";
+import { collectHotpathProfiles } from "./hotpath.ts";
 
 instrumentNative();
 const base = Array.from({ length: 10000 }, (_, id) => ({ id, title: "Song " + id }));
@@ -48,6 +49,18 @@ try {
   const root = render(() => <App />, { title: "Solid / GPUI Linux comparison", width: 680, height: 900 });
   if (!native) throw new Error("Solid root did not bind a real native renderer");
   await Bun.sleep(700);
+  collectHotpathProfiles("solid", [
+    { name: "single", iterations: 4800,
+      run: i => { setTracks(12, "title", "Song 12 / " + i); root.flushSync(() => {}); } },
+    { name: "theme", iterations: 1920,
+      run: i => { setAccent(i % 2 ? "#8b5cf6" : "#ff6699"); root.flushSync(() => {}); } },
+    { name: "reorder", iterations: 1536,
+      run: () => { setOrder(rows => [...rows.slice(1), rows[0]!]); root.flushSync(() => {}); } },
+    { name: "window", iterations: 2400,
+      run: i => { setWindowStart((i % 120) + 1); root.flushSync(() => {}); } },
+  ]);
+  setWindowStart(0);
+  root.flushSync(() => {});
   const phases = {
     single: await measurePhase(120, i => setTracks(12, "title", "Song 12 / " + i), () => root.flushSync(() => {})),
     ...(!staticStyle ? { theme: await measurePhase(24, i => setAccent(i % 2 ? "#8b5cf6" : "#ff6699"), () => root.flushSync(() => {})) } : {}),
