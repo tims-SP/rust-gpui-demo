@@ -89,7 +89,7 @@ jobs:
           assert require_entry=='./index.cjs'
           assert (manifest.parent/require_entry).exists()
           pkg['main']=require_entry
-          manifest.write_text(json.dumps(pkg,indent=2)+'\\n')
+          manifest.write_text(json.dumps(pkg,indent=2))
           print('Hermes bundle package main now:',pkg['main'])
           PY
           for fw in solid svelte; do
