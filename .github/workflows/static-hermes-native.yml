@@ -241,7 +241,7 @@ jobs:
       - name: Validate all same-runner output checksums and generate one side-by-side performance/RSS table
         run: |
           python3 bench/static-hermes/unified_report.py
-          cat results/static-hermes/REPORT.md >> "$GITHUB_STEP_SUMMARY"
+          cat results/static-hermes/UNIFIED_REPORT.md >> "$GITHUB_STEP_SUMMARY"
       - name: Preserve all compiled artifacts, bytecode proofs, per-process traces and RSS
         if: always()
         uses: actions/upload-artifact@v4
