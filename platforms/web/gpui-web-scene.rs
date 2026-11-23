@@ -115,7 +115,7 @@ fn main(){
       stats.borrow_mut().driver_start=Some(Instant::now());
       for idx in 0..120{
         executor.timer(Duration::from_millis(16)).await;
-        if entity.update(async_cx, |view,cx|{
+        entity.update(async_cx, |view,cx|{
           {
             let mut measured=view.stats.borrow_mut();
             measured.applied_updates+=1;
@@ -125,7 +125,7 @@ fn main(){
           if idx%15==0{view.theme=if view.theme=="dark"{"light"}else{"dark"}.to_owned();}
           view.rows.rotate_left(1);
           cx.notify();
-        }).is_err(){return;}
+        });
       }
       executor.timer(Duration::from_millis(250)).await;
       let measured=stats.borrow();

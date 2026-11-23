@@ -100,7 +100,7 @@ fn main(){
             stats.borrow_mut().driver_start=Some(Instant::now());
             for idx in 0..120 {
                 executor.timer(Duration::from_millis(16)).await;
-                let ok=entity.update(async_cx, |view, cx|{
+                entity.update(async_cx, |view, cx|{
                     {
                         let mut s=view.stats.borrow_mut();
                         s.ui_updates+=1;
@@ -111,7 +111,6 @@ fn main(){
                     view.rows.rotate_left(1);
                     cx.notify();
                 });
-                if ok.is_err(){println!("GPUI_REPLAY_ERROR:entity_update");return;}
             }
             executor.timer(Duration::from_millis(250)).await;
             let mut measured=stats.borrow_mut();
