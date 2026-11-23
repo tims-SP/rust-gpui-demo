@@ -1,6 +1,6 @@
 {
   "schema": "six-platform-benchmark/v1",
-  "generated_at_utc": "2026-11-23T19:37:09.541822+00:00",
+  "generated_at_utc": "2026-11-23T21:38:00Z",
   "repo": "tims-SP/rust-gpui-demo",
   "cells": [
     {
@@ -114,13 +114,13 @@
     {
       "platform": "web",
       "framework": "svelte",
-      "ci_run_id": 45204482618,
-      "ci_sha": "a85a672a90c14587cf74277be49f730e86901465",
+      "ci_run_id": 45266653392,
+      "ci_sha": "ab466b89dfd60554e04cfb6550f0f5b454685264",
       "gpui_render_verified": true,
-      "metric_status": "NOT_MEASURED",
-      "gpui_replay_p50_us": null,
-      "gpui_replay_p95_us": null,
-      "gpui_replay_p99_us": null,
+      "metric_status": "MEASURED",
+      "gpui_replay_p50_us": 10580,
+      "gpui_replay_p95_us": 24795,
+      "gpui_replay_p99_us": 25150,
       "g1_screenshot_readiness_ms": null,
       "g1_screenshot_attempts": null,
       "scene_source": "precomputed-Hermes-JSON",
@@ -132,13 +132,13 @@
     {
       "platform": "web",
       "framework": "solid",
-      "ci_run_id": 45204482618,
-      "ci_sha": "a85a672a90c14587cf74277be49f730e86901465",
+      "ci_run_id": 45266653392,
+      "ci_sha": "ab466b89dfd60554e04cfb6550f0f5b454685264",
       "gpui_render_verified": true,
-      "metric_status": "NOT_MEASURED",
-      "gpui_replay_p50_us": null,
-      "gpui_replay_p95_us": null,
-      "gpui_replay_p99_us": null,
+      "metric_status": "MEASURED",
+      "gpui_replay_p50_us": 10815,
+      "gpui_replay_p95_us": 25945,
+      "gpui_replay_p99_us": 88085,
       "g1_screenshot_readiness_ms": null,
       "g1_screenshot_attempts": null,
       "scene_source": "precomputed-Hermes-JSON",
@@ -243,10 +243,10 @@
       "artifact": "gpui-macos-svelte-solid-real-window-evidence"
     },
     "web": {
-      "run_id": 45204482618,
-      "sha": "a85a672a90c14587cf74277be49f730e86901465",
-      "branch": "main",
-      "created_at": "2026-11-23T15:22:23Z",
+      "run_id": 45266653392,
+      "sha": "ab466b89dfd60554e04cfb6550f0f5b454685264",
+      "branch": "feature/gpui-frame-bench",
+      "created_at": "2026-11-23T21:08:52Z",
       "artifact": "gpui-web-official-canvas-svelte-solid"
     },
     "ios": {
