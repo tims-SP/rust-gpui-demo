@@ -1,8 +1,19 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createSolidPlugin } from "@gpuix/solid/bun-plugin";
 import { load_svelte, load_module, resolve_svelte } from "gpuix-svelte/plugin";
 import type { BunPlugin } from "bun";
 
+const requireFromBuild = createRequire(import.meta.url);
+const nativeJsResolver: BunPlugin = {
+  name: "bundle-gpuix-js-host-but-external-native-node",
+  setup(build) {
+    build.onResolve({filter: /^@gpuix\\/native(?:\\/.*)?$/}, (args) => {
+      if(args.path === "@gpuix/native") return {path: args.path, external: true};
+      return {path: requireFromBuild.resolve(args.path)};
+    });
+  }
+};
 const sveltePlugin: BunPlugin = {
   name: "gpui-svelte-custom-bundle",
   setup(build) {
@@ -25,11 +36,11 @@ for(const [framework,entry,plugin,conditions] of [
     entrypoints:[entry],
     target:"node",
     format:"cjs",
-    external:["@gpuix/native"],
+    external:[],
     conditions:[...conditions],
     define:{"process.env.NODE_ENV":'"production"'},
     minify:false,
-    plugins:[plugin],
+    plugins:[nativeJsResolver,plugin],
     throw:false
   });
   if(!result.success || !result.outputs.length) {
