@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><title>Hermes VM Wasm</title></head>
+<body><h1>Hermes VM in a real browser</h1><p id="result">PENDING</p><pre id="log"></pre>
+<script src="./hermes.js"></script>
+<script>
+(async function () {
+  const state = document.getElementById("result");
+  const log = document.getElementById("log");
+  const stdout = [], stderr = [];
+  try {
+    if (typeof CreateHermesVM !== "function") throw Error("Hermes factory missing");
+    const vm = await CreateHermesVM({
+      noInitialRun: true,
+      locateFile: name => "./" + name,
+      print: line => stdout.push(String(line)),
+      printErr: line => stderr.push(String(line))
+    });
+    const response = await fetch("./shared.hbc");
+    if (!response.ok) throw Error("Fetch HBC: " + response.status);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.length < 32) throw Error("HBC is too small");
+    vm.FS.writeFile("/shared.hbc", bytes);
+    try {
+      const code = vm.callMain(["/shared.hbc"]);
+      if (code !== 0 && code !== undefined) throw Error("Hermes exit: " + code);
+    } catch (error) {
+      if (!error || error.status !== 0) throw error;
+    }
+    log.textContent = "HBC size=" + bytes.length + "\n" + stdout.join("\n");
+    if (!stdout.some(line => line.includes("HERMES_SHARED_OK=479820"))) {
+      throw Error("Incorrect VM output, stderr: " + stderr.join("\n"));
+    }
+    state.textContent = "PASS HERMES_SHARED_OK=479820";
+  } catch (error) {
+    state.textContent = "FAIL " + String(error && error.stack || error);
+    log.textContent = stderr.join("\n");
+  }
+}());
+</script>
+</body></html>
