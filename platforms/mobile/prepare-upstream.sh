@@ -25,14 +25,6 @@ for path, relative in [
     text = path.read_text()
     if '[patch.crates-io]' in text:
         raise SystemExit(f'Unexpected existing cargo registry patch: {path}')
-    if path == root / 'Cargo.toml':
-        # The target-specific dependency enables GLES-only on Android without
-        # switching iOS Metal or future physical Android Vulkan builds.
-        original = 'gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6" }'
-        patched = 'gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6", features = ["android-gles-only"] }'
-        if text.count(original) != 1:
-            raise SystemExit(f'Unexpected Android gpui_wgpu dependency definition: {path}')
-        text = text.replace(original, patched, 1)
     path.write_text(text + '\n[patch.crates-io]\ngpui-pre-wgpu = { path = "' + relative + '" }\n')
 PYBACKPORT
 echo GPUI_ANDROID_GLES_RENDERER_BACKPORT_READY

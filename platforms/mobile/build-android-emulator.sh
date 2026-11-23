@@ -5,6 +5,19 @@ root="$(pwd)"
 example="$root/.gpui-mobile/example"
 test -s "$example/src/screens/hermes-svelte.json"
 test -s "$example/src/screens/hermes-solid.json"
+# This is the one opt-in point for GLES-only. All production ARM64 Android
+# builds retain the default Vulkan-first backend, and iOS retains Metal.
+python3 - "$root/.gpui-mobile/Cargo.toml" <<'PYBACKEND'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); s=p.read_text()
+old='gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6" }'
+new='gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6", features = ["android-gles-only"] }'
+if s.count(old)!=1:
+    raise SystemExit(f'Unknown upstream Android renderer dependency in {p}')
+p.write_text(s.replace(old,new,1))
+print('GPUI_ANDROID_EMULATOR_GLES_ONLY_ENABLED')
+PYBACKEND
 python3 - "$example/android/gradle/app/build.gradle.kts" <<'PY'
 from pathlib import Path
 import sys

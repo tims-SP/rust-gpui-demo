@@ -21,7 +21,7 @@ subpixel shader refactor in Zed #67323 (unsupported dual-source is disabled).
 2026-11-24 Android G1 CI #45278222779 confirmed the backport selected GL,
 requested compute_workgroups=0 and got past request_device, but failed during
 `Surface::configure`: `eglCreateWindowSurface: EGL_BAD_ALLOC` / `Invalid surface`.
-This variant also enables an opt-in `android-gles-only` crate feature on Android
+The emulator-only build script enables the opt-in `android-gles-only` feature
 which restricts wgpu Instance creation to GL instead of requesting both GL
 and Vulkan for one AndroidNativeWindow. It is only a hypothesis until an on-device
 retest verifies a valid configured Surface and drawn GPUI scene.
