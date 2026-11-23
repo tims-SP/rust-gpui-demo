@@ -211,3 +211,48 @@ jobs:
           name: gpui-mobile-hermes-svelte-solid-arm64-apks
           path: results/mobile-apk/*.apk
           retention-days: 14
+
+
+  ios-two-hermes-scenes-simulator:
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios-sim
+          cache: false
+      - name: Prepare Hermes-derived Svelte/Solid mobile scene views
+        run: bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+      - name: Install XcodeGen and record simulator environment
+        run: |
+          xcodebuild -version
+          uname -m
+          xcrun simctl list devices available
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+      - name: Build two iOS .app bundles and attempt real Simulator screenshots
+        run: bash platforms/mobile/build-ios.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-mobile-hermes-svelte-solid-ios-simulator
+          path: |
+            results/ios/*.app.zip
+            results/ios/*-simulator.png
+            results/ios/*-build.log
+          retention-days: 14
