@@ -50,7 +50,11 @@ jobs:
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DHERMES_ENABLE_TEST_SUITE=OFF
-          cmake --build .static-hermes-build --target shermes hermes --parallel 2
+          cmake --build .static-hermes-build --target shermes-dep hermes --parallel 2
+          # shermes itself does not depend on its output executable's link libraries.
+          # shermes-dep builds libshermes_console, hermesvm and jsi too.
+          test -f .static-hermes-build/tools/shermes/libshermes_console.so
+          test -f .static-hermes-build/lib/libhermesvm.so
           file .static-hermes-build/bin/shermes .static-hermes-build/bin/hermes
           .static-hermes-build/bin/shermes -help 2>&1 | head -n 20 || true
           mkdir -p results/static-hermes
