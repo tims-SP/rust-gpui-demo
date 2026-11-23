@@ -99,6 +99,7 @@ for framework in svelte solid; do
     image="$root/results/ios/$framework-simulator.png"
     xcrun simctl io "$device" screenshot "$image"
     test "$(stat -f%z "$image")" -gt 20000
-    echo "GPUI_IOS_SIMULATOR_LAUNCH_AND_SCREENSHOT_CAPTURED:$framework"
+    python3 platforms/mobile/verify-ios-image.py "$image"
+    echo "GPUI_IOS_SIMULATOR_HERMES_SCENE_RENDER_PASS:$framework"
     xcrun simctl terminate "$device" dev.gpui.mobile.example || true
 done
