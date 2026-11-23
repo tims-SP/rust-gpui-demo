@@ -1,0 +1,101 @@
+name: Real Windows GPUI Hermes Svelte Solid windows
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/gpui-windows-real.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  windows-real-window:
+    runs-on: windows-2025
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: v1.29.3
+          path: .zed-source
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes/
+      - name: Overlay actual Hermes-generated scene viewer
+        shell: bash
+        run: |
+          cp platforms/native/bench_view.rs .zed-source/crates/gpui/examples/hello_world.rs
+          test -s results/hermes/svelte.json
+          test -s results/hermes/solid.json
+      - name: Compile official native GPUI executable on Windows
+        shell: bash
+        working-directory: .zed-source
+        env:
+          CARGO_BUILD_JOBS: '3'
+        run: cargo build -p gpui --example hello_world
+      - name: Try actual Windows GPUI window and capture desktop pixels
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $out = Join-Path $env:GITHUB_WORKSPACE 'results/windows-gpui'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $exe = Join-Path $env:GITHUB_WORKSPACE '.zed-source/target/debug/examples/hello_world.exe'
+          if (!(Test-Path $exe)) { throw "GPUI binary does not exist" }
+          foreach ($f in @("svelte","solid")) {
+            $env:HERMES_BENCH_JSON = Join-Path $env:GITHUB_WORKSPACE "results/hermes/$f.json"
+            $stdout = Join-Path $out "$f-stdout.txt"
+            $stderr = Join-Path $out "$f-stderr.txt"
+            $proc = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            try {
+              $ready = $false
+              for ($i=0; $i -lt 40; $i++) {
+                Start-Sleep -Seconds 1
+                if ((Test-Path $stdout) -and
+                    ((Get-Content $stdout -Raw) -match 'GPUI_WINDOW_CREATED')) {
+                  $ready = $true
+                  break
+                }
+                if ($proc.HasExited) { break }
+              }
+              Get-Content $stdout -ErrorAction SilentlyContinue
+              if (!$ready) { throw "Native Windows GPUI window was not created" }
+              $log = Get-Content $stdout -Raw
+              if ($log -notmatch "GPUI_IMPORTED_HERMES_SCENE_OK:$f") {
+                throw "Incorrect Windows Hermes scene"
+              }
+              Start-Sleep -Seconds 4
+              $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap($bounds.Width,$bounds.Height)
+              $g = [System.Drawing.Graphics]::FromImage($bmp)
+              $g.CopyFromScreen($bounds.Location,[System.Drawing.Point]::Empty,$bounds.Size)
+              $png = Join-Path $out "$f.png"
+              $bmp.Save($png,[System.Drawing.Imaging.ImageFormat]::Png)
+              $seen = New-Object 'System.Collections.Generic.HashSet[int]'
+              for ($x=20; $x -lt $bounds.Width; $x+=13) {
+                for ($y=20; $y -lt $bounds.Height; $y+=13) {
+                  [void]$seen.Add($bmp.GetPixel($x,$y).ToArgb())
+                }
+              }
+              $g.Dispose();$bmp.Dispose()
+              if ($seen.Count -lt 24) { throw "Desktop screenshot is nearly blank: $($seen.Count) colors" }
+              Write-Output "WINDOWS_GPUI_REAL_SCREENSHOT_PASS:$f colors=$($seen.Count)"
+            } finally {
+              if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+            }
+          }
+          Write-Output 'WINDOWS_GPUI_TWO_REAL_WINDOWS_PASS'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-gpui-svelte-solid-real-window-evidence
+          path: results/windows-gpui/
+          retention-days: 30
