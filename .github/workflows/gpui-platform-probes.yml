@@ -16,6 +16,7 @@ on:
           - ios-simulator
 permissions:
   contents: read
+  actions: read
 jobs:
   desktop-gpui-compile:
     if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
@@ -312,8 +313,15 @@ jobs:
           python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-pil
-      - name: Build two independent Android x86_64 AVD APKs
-        run: bash platforms/mobile/build-android-emulator.sh
+      - name: Reuse exact two failed-run Android APKs (no rebuild variance)
+        uses: actions/download-artifact@v4
+        with:
+          name: android-emulator-hermes-svelte-solid-evidence
+          run-id: 45259355099
+          github-token: ${{ github.token }}
+          path: results/android-emulator
+      - name: Verify reused APKs are present
+        run: test -s results/android-emulator/svelte.apk && test -s results/android-emulator/solid.apk
       - name: Enable KVM on hosted Ubuntu runner
         shell: bash
         run: |
