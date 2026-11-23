@@ -331,7 +331,7 @@ jobs:
           profile: pixel_5
           emulator-boot-timeout: 600
           disable-linux-hw-accel: false
-          emulator-options: '-no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim'
+          # Diagnostic A/B: keep the AVD/APKs/test unchanged, remove guest Vulkan.\n          # Do NOT use this path as proof of Vulkan support or production parity.\n          emulator-options: '-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim'
           disable-animations: true
           script: bash platforms/mobile/test-android-emulator.sh
       - uses: actions/upload-artifact@v4
