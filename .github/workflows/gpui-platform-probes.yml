@@ -140,3 +140,74 @@ jobs:
           name: gpui-mobile-android-arm64-apk
           path: .gpui-mobile/example/android/gradle/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
+
+
+  android-two-hermes-scenes-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify Hermes scenes and adapt shared mobile view
+        shell: bash
+        run: bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+      - name: Build Svelte and Solid parity APKs with native GPUI Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_HOME="$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -d "$ANDROID_NDK_HOME"
+          cargo install cargo-ndk --locked
+          mkdir -p results/mobile-apk
+          for framework in svelte solid; do
+            opts=()
+            if [[ "$framework" == solid ]]; then opts+=(--features solid-demo); fi
+            (
+              cd .gpui-mobile/example
+              cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs build --lib "${opts[@]}"
+              test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libgpui_mobile_example.so
+              cd android/gradle
+              chmod +x ./gradlew
+              ./gradlew :app:assembleDebug --no-daemon
+            )
+            cp .gpui-mobile/example/android/gradle/app/build/outputs/apk/debug/app-debug.apk "results/mobile-apk/$framework.apk"
+            python3 - "results/mobile-apk/$framework.apk" <<'PY'
+          from pathlib import Path
+          import sys,zipfile
+          apk=Path(sys.argv[1])
+          with zipfile.ZipFile(apk) as z:
+              assert 'AndroidManifest.xml' in z.namelist()
+              assert 'lib/arm64-v8a/libgpui_mobile_example.so' in z.namelist()
+              assert z.getinfo('lib/arm64-v8a/libgpui_mobile_example.so').file_size > 100000
+          print("GPUI_MOBILE_HERMES_SCENE_APK_BUILD_PASS:"+apk.stem)
+          PY
+          done
+          test "$(sha256sum results/mobile-apk/svelte.apk | cut -d' ' -f1)" != "$(sha256sum results/mobile-apk/solid.apk | cut -d' ' -f1)"
+          echo GPUI_MOBILE_TWO_DISTINCT_APKS_BUILT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-mobile-hermes-svelte-solid-arm64-apks
+          path: results/mobile-apk/*.apk
+          retention-days: 14
