@@ -20,10 +20,15 @@ platform (subject to an actual simulator toolchain/runner and signing).
 
 **G1 scene-render evidence:** Android Svelte/Solid screenshots were verified
 on an API-34 x86_64 emulator using SwiftShader GLES and the opt-in backport;
-CI [#45282165716](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45282165716)
-reports 2/2 `RENDER_PASS`. It reused the *same binary APKs* built in CI
+The clean from-source Android CI
+[#45283713120](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45283713120)
+reports 2/2 `RENDER_PASS`: two independently built APKs (both Gradle attempt 1),
+actual AVD pixel screenshots (Svelte 92.87%; Solid 92.90% coverage), scene
+markers and live app PIDs. A previous successful replay
+[#45282165716](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45282165716)
+used the *same binary APKs* built in CI
 [#45280068480](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45280068480)
-to isolate the screenshot verifier fix. iOS Svelte/Solid simulator G1 had
+to isolate the screenshot verifier fix before the final clean build. iOS Svelte/Solid simulator G1 had
 previously passed in CI
 [#45278354140](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45278354140).
 
