@@ -7,11 +7,16 @@ variants = ("scoped", "raw")
 scenes = ("single", "theme", "reorder", "window")
 def kind(path):
     s = path.replace("\\\\", "/").lower()
+    if "/svelte/src/internal/" in s or "/svelte/internal/" in s or "/node_modules/svelte/" in s:
+        return "Svelte core"
     if "/gpuix-svelte/" in s:
         if s.endswith("/style.js") or s.endswith("/style.ts"): return "gpuix-svelte style"
         if s.endswith("/renderer.js") or s.endswith("/renderer.ts"): return "gpuix-svelte shadow host"
+        # Svelte 5 is bundled by the adapter: pinned svelte internal source maps land here.
+        if s.rsplit("/",1)[-1] in ("proxy.js","each.js","runtime.js","effects.js","batch.js",
+                                   "render.js","deriveds.js","sources.js","dom.js","block.js"):
+            return "Svelte core"
         return "gpuix-svelte other"
-    if "/svelte/" in s or "svelte/src/internal/" in s or "/svelte-" in s: return "Svelte core"
     if "/solid-js/" in s: return "Solid core"
     if "/bench/" in s: return "benchmark/app"
     if "node:" in s or "bun:" in s or "jsc" in s: return "runtime/builtin"
@@ -21,9 +26,10 @@ data = {}
 for variant in variants:
     items = []
     for trial in (41, 42, 43):
+        profile_trial = trial + (10 if variant == "raw" else 0)
         cases = {}
         for scene in scenes:
-            file = root / f"hotpath-svelte-{scene}-{trial}.json"
+            file = root / f"hotpath-svelte-{scene}-{profile_trial}.json"
             assert file.exists(), file
             result = json.loads(file.read_text())
             assert result["framework"] == "svelte" and result["scenario"] == scene
@@ -49,11 +55,17 @@ for variant in variants:
                 "selfSamplesByModule":counts,
                 "topSelfFunctions":sorted(functions.items(), key=lambda kv:kv[1], reverse=True)[:15]
             }
-        reports = root / f"svelte-{variant}-{trial}.json"
+        reports = root / f"svelte-{variant}-{profile_trial}.json"
         run = json.loads(reports.read_text())
         assert run["visibleSongs"] == 48 and run["screenshotDeviation"] > 0
         assert Path(run["screenshot"]).stat().st_size > 500
-        items.append({"trial":trial,"scenes":cases})
+        expected_component = "SvelteApp.svelte" if variant == "scoped" else "SvelteRawList.svelte"
+        sampled_sources = " ".join(
+            src.get("url",src.get("sourceURL",""))
+            for src in json.loads((root / f"hotpath-svelte-window-{profile_trial}.json").read_text())["cpu"]["stackTraces"]["sources"]
+        )
+        assert expected_component in sampled_sources, f"Wrong compiled component in {variant}: {expected_component}"
+        items.append({"trial":trial,"profileTrial":profile_trial,"scenes":cases})
     data[variant]=items
 
 (root / "REMAINING_HOTPATH.json").write_text(json.dumps(data,indent=2)+"\n")

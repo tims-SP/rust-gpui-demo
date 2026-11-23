@@ -46,11 +46,11 @@ jobs:
         run: |
           set -euo pipefail
           for trial in 41 42 43; do
-            export BENCH_TRIAL="$trial"
             if (( trial % 2 == 0 )); then variants=(raw scoped); else variants=(scoped raw); fi
             for variant in "${variants[@]}"; do
               export BENCH_CASE="$variant"
               export SVELTE_STYLE_MODE="$variant"
+              if [ "$variant" = raw ]; then export BENCH_TRIAL="$((trial + 10))"; else export BENCH_TRIAL="$trial"; fi
               xvfb-run -a -s "-screen 0 1280x950x24" \
                 timeout 150s bun --conditions custom-renderer \
                 --preload gpuix-svelte/plugin bench/svelte.ts \
