@@ -31,7 +31,7 @@ em++ -std=c++17 -O2 -DNDEBUG -fno-exceptions -fno-rtti \
   bench/hermes-ibex-wasm/hermes-web-host.cpp \
   .hermes-wasm/lib/libhermesvm_a.a .hermes-wasm/jsi/libjsi.a \
   -o results/ibex-hermes-wasm/browser/hermes.js \
-  -sNO_ENTRY=1 -sMODULARIZE=1 -sEXPORT_NAME=CreateHermesVM \
+  --no-entry -sMODULARIZE=1 -sEXPORT_NAME=CreateHermesVM \
   -sENVIRONMENT=web,node \
   -sEXPORTED_FUNCTIONS=_hermes_run_hbc_file,_malloc,_free \
   -sEXPORTED_RUNTIME_METHODS=FS,ccall \
@@ -69,5 +69,5 @@ timeout 120s "$chrome" --headless=new --no-sandbox --disable-gpu \
   --dump-dom http://127.0.0.1:8765/index.html \
   > results/ibex-hermes-wasm/diagnostics/browser-dom.txt \
   2> results/ibex-hermes-wasm/diagnostics/browser-stderr.txt
-grep -q 'PASS HERMES_SHARED_OK=479820' results/ibex-hermes-wasm/diagnostics/browser-dom.txt
+python3 bench/hermes-ibex-wasm/verify-browser.py results/ibex-hermes-wasm/diagnostics/browser-dom.txt
 echo HERMES_BROWSER_VM_HBC_PASS | tee results/ibex-hermes-wasm/diagnostics/status.txt
