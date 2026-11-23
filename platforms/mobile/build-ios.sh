@@ -67,8 +67,8 @@ done
 
 # Simulator is an independent acceptance gate. A build cannot imply a launch.
 if [[ "$(uname -m)" != "arm64" ]]; then
-    echo "GPUI_IOS_SIMULATOR_RUN_UNVERIFIED:non_arm64_runner"
-    exit 0
+    echo "GPUI_IOS_G1_FAIL:non_arm64_runner" >&2
+    exit 1
 fi
 device="$(xcrun simctl list devices available -j | python3 -c '
 import json,sys
@@ -79,8 +79,8 @@ for group in r.get("devices",{}).values():
             print(d["udid"]);sys.exit(0)
 ')"
 if [[ -z "$device" ]]; then
-    echo "GPUI_IOS_SIMULATOR_RUN_UNVERIFIED:no_iphone_simulator"
-    exit 0
+    echo "GPUI_IOS_G1_FAIL:no_iphone_simulator" >&2
+    exit 1
 fi
 state="$(xcrun simctl list devices available -j | python3 -c '
 import json,sys

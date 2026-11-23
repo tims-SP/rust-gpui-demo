@@ -25,7 +25,14 @@ for f in svelte solid; do
     adb logcat -d -b crash -v time > "$root/results/android-emulator/$f-crash.txt" || true
     live="$(adb shell pidof dev.gpui.mobile.example | tr -d '\r' || true)"
     echo "ANDROID_GPUI_PROCESS_DIAGNOSTIC:$f:after_probe=$live"
-    if [[ "$accepted" != true || -z "$live" ]]; then
+    # The screenshot proves pixels; the in-app marker proves this framework's
+    # Rust Home view constructed those nodes, rather than a stale app surface.
+    scene_logged=false
+    if grep -Fq "BENCH_G1_SCENE_BUILT:$f:" "$root/results/android-emulator/$f-logcat.txt"; then
+        scene_logged=true
+    fi
+    echo "ANDROID_GPUI_SCENE_LOG_DIAGNOSTIC:$f:$scene_logged"
+    if [[ "$accepted" != true || -z "$live" || "$scene_logged" != true ]]; then
         grep -i -E 'ResumedActivity|mCurrentFocus|topResumedActivity' \
             "$root/results/android-emulator/$f-activity-state.txt" \
             "$root/results/android-emulator/$f-window-state.txt" | tail -12 || true
