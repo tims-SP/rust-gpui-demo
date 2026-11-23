@@ -15,7 +15,7 @@ for variant, framework in variants.items():
         assert run["trial"] == trial and run["framework"] == framework
         assert run["runtime"]["versions"]["bun"] == "1.4.5"
         assert run["visibleSongs"] == 48 and run["screenshotDeviation"] > 0
-        assert (root / run["screenshot"]).exists()
+        assert Path(run["screenshot"]).exists()
         for scenario in scenarios:
             stats = run["phases"][scenario]
             if scenario == "offscreen":
