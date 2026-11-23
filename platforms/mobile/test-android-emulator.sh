@@ -51,12 +51,17 @@ for f in svelte solid; do
         gpu_profile_logged=true
     fi
     echo "ANDROID_GPUI_GLES_BACKPORT_DIAGNOSTIC:$f:$gpu_profile_logged"
+    gl_instance_logged=false
+    if grep -Fq 'GPUI_ANDROID_INSTANCE_BACKENDS: GLES_ONLY' "$out/$f-logcat.txt"; then
+        gl_instance_logged=true
+    fi
+    echo "ANDROID_GPUI_GLES_ONLY_INSTANCE_DIAGNOSTIC:$f:$gl_instance_logged"
     scene_logged=false
     if grep -Fq "BENCH_G1_SCENE_BUILT:$f:" "$out/$f-logcat.txt"; then
         scene_logged=true
     fi
     echo "ANDROID_GPUI_SCENE_LOG_DIAGNOSTIC:$f:$scene_logged"
-    if [[ "$accepted" != true || -z "$live" || "$scene_logged" != true || "$gpu_profile_logged" != true ]]; then
+    if [[ "$accepted" != true || -z "$live" || "$scene_logged" != true || "$gpu_profile_logged" != true || "$gl_instance_logged" != true ]]; then
         grep -iE 'ResumedActivity|mCurrentFocus|topResumedActivity' \
             "$out/$f-activity-state.txt" "$out/$f-window-state.txt" | tail -12 || true
         grep -iE 'gpui-mobile-example|FATAL|AndroidRuntime|Fatal signal|signal 11|emulator' \

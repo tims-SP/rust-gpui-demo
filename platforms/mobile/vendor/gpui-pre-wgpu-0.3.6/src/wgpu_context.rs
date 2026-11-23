@@ -293,8 +293,18 @@ impl WgpuContext {
 
     #[cfg(not(target_family = "wasm"))]
     pub fn instance(display: Box<dyn wgpu::wgt::WgpuHasDisplayHandle>) -> wgpu::Instance {
+        // wgpu initializes native surfaces for *all* requested backends, even
+        // when Android Emulator exposes no Vulkan adapter. On one ANativeWindow
+        // this can reserve the surface before EGL, producing EGL_BAD_ALLOC.
+        // Explicitly select GL only in the opt-in Android emulator build.
+        let backends = if cfg!(all(target_os = "android", feature = "android-gles-only")) {
+            log::info!("GPUI_ANDROID_INSTANCE_BACKENDS: GLES_ONLY");
+            wgpu::Backends::GL
+        } else {
+            wgpu::Backends::VULKAN | wgpu::Backends::GL
+        };
         wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::VULKAN | wgpu::Backends::GL,
+            backends,
             flags: wgpu::InstanceFlags::default(),
             backend_options: wgpu::BackendOptions::default(),
             memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),

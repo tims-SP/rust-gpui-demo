@@ -34,6 +34,8 @@ zed-rev = "bcf6582ce3500df93a8a39366640173e6786cea6"
 [features]
 default = []
 font-kit = ["dep:font-kit"]
+# Only enabled on the emulator Android target; physical Vulkan stays available.
+android-gles-only = []
 
 [lib]
 name = "gpui_wgpu"
