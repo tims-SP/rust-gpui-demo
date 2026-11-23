@@ -23,6 +23,17 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npm run ci
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+      - name: Real Svelte/Solid JSON batches applied in Rust with semantic parity
+        run: |
+          node tools/export-mutations.mjs
+          cargo test --manifest-path crates/ui-mutation/Cargo.toml
+          for f in svelte solid; do
+            cargo run --manifest-path crates/ui-mutation/Cargo.toml --bin verify-trace -- "results/mutations/$f.json"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
