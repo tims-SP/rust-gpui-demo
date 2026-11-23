@@ -1,0 +1,81 @@
+name: Hermes Wasm HBC Svelte and Solid in real Chromium
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'platforms/web/**'
+      - '.github/workflows/hermes-web-frameworks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  hermes-web-frameworks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: meta/hermes
+          ref: d412d3bd851278712c20cca25d094e32641a0465
+          path: .hermes-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Download previously proven same-revision Hermes JSI WebAssembly VM
+        uses: actions/download-artifact@v4
+        with:
+          name: hermes-vm-webassembly-browser
+          run-id: 45187557146
+          github-token: ${{ github.token }}
+          path: results/hermes-web
+      - name: Build real Svelte and Solid custom renderer JS bundles
+        run: npm install --no-audit --no-fund && npm run build
+      - name: Prepare pinned native host Hermes bytecode compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build python3 libreadline-dev curl
+          cmake -S .hermes-source -B .hermes-host -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DHERMES_ENABLE_TEST_SUITE=OFF -DHERMES_ENABLE_NAPI=OFF
+          cmake --build .hermes-host --target hermesc --parallel 3
+          test -x .hermes-host/bin/hermesc
+      - name: Compile BOTH actual framework bundles to matching Hermes HBC
+        run: |
+          set -euo pipefail
+          cp platforms/web/index.html results/hermes-web/browser/index.html
+          .hermes-host/bin/hermesc -O -emit-binary \
+            -out results/hermes-web/browser/shim.hbc platforms/web/host-polyfill.js
+          for f in svelte solid; do
+            .hermes-host/bin/hermesc -O -emit-binary \
+              -out "results/hermes-web/browser/$f.hbc" "dist/$f.js"
+            test -s "results/hermes-web/browser/$f.hbc"
+          done
+          sha256sum results/hermes-web/browser/*.hbc > results/hermes-web/hbc-hashes.txt
+      - name: Actual Hermes Wasm JSI runs both HBC bundles in Node
+        run: node platforms/web/node-hbc.cjs | tee results/hermes-web/node-proof.log
+      - name: Real Chromium running Hermes VM Wasm with both HBCs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8955 --bind 127.0.0.1 \
+            --directory results/hermes-web/browser > results/hermes-web/http.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          sleep 2
+          test -n "$(command -v google-chrome || true)"
+          timeout 120s google-chrome --headless=new --no-sandbox \
+            --disable-gpu --disable-dev-shm-usage --virtual-time-budget=30000 \
+            --dump-dom http://127.0.0.1:8955/index.html \
+            > results/hermes-web/browser-dom.html 2> results/hermes-web/chromium-stderr.log
+          python3 platforms/web/verify-browser.py results/hermes-web/browser-dom.html
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hermes-wasm-both-frameworks-real-browser
+          path: results/hermes-web/
+          retention-days: 30
