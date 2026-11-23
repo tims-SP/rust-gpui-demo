@@ -1,3 +1,4 @@
+# Run the exact same pinned upstream Hermes VM used by Ibex2.
 name: Hermes Wasm HBC Svelte and Solid in real Chromium
 on:
   push:
