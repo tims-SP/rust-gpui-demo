@@ -45,7 +45,23 @@ for f in svelte solid; do
         test -s android/gradle/app/src/main/jniLibs/x86_64/libgpui_mobile_example.so
         cd android/gradle
         chmod +x ./gradlew
-        ./gradlew :app:assembleDebug --no-daemon
+        # A GitHub hosted runner can receive Maven Central HTTP 429 even after
+        # Rust and the GPUI renderer have compiled. Retry *only* known transient
+        # dependency-fetch failures; compiler or source errors fail immediately.
+        for gradle_attempt in 1 2 3; do
+            gradle_log="$root/results/android-emulator/$f-gradle-attempt-$gradle_attempt.log"
+            if ./gradlew :app:assembleDebug --no-daemon 2>&1 | tee "$gradle_log"; then
+                echo "GPUI_ANDROID_GRADLE_BUILD_PASS:$f:attempt=$gradle_attempt"
+                break
+            fi
+            if [[ "$gradle_attempt" -eq 3 ]] || ! grep -Eiq \
+                'status code 429|Too Many Requests|status code 50[0234]|status code 503|Read timed out|Connection reset' "$gradle_log"; then
+                echo "GPUI_ANDROID_GRADLE_HARD_FAILURE:$f:attempt=$gradle_attempt" >&2
+                exit 1
+            fi
+            echo "GPUI_ANDROID_GRADLE_FETCH_BACKOFF:$f:attempt=$gradle_attempt" >&2
+            sleep $(( 10 * gradle_attempt ))
+        done
     )
     cp "$example/android/gradle/app/build/outputs/apk/debug/app-debug.apk" "$root/results/android-emulator/$f.apk"
     python3 - "$root/results/android-emulator/$f.apk" <<'PY'
