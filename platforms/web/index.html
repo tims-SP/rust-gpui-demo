@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Hermes Wasm Svelte/Solid HBC real browser verification</title></head>
+<body>
+  <h1>Hermes WebAssembly: Svelte 5 vs Solid</h1>
+  <p id="result-svelte" data-status="pending">PENDING</p>
+  <p id="result-solid" data-status="pending">PENDING</p>
+  <pre id="details"></pre>
+  <script src="./hermes.js"></script>
+  <script>
+  (async function(){
+    const expected={count:256,start:40,theme:"light",renderedRows:48};
+    const details=document.getElementById("details");
+    for(const f of ["svelte","solid"]){
+      const status=document.getElementById("result-"+f),out=[],errs=[];
+      try{
+        const vm=await CreateHermesVM({
+          locateFile:n=>"./"+n,
+          print:s=>out.push(String(s)),
+          printErr:s=>errs.push(String(s))
+        });
+        for(const [file,target] of [["shim.hbc","/shim.hbc"],[f+".hbc","/app.hbc"]]){
+          const r=await fetch("./"+file);
+          if(!r.ok)throw Error("HTTP status "+r.status+" for "+file);
+          vm.FS.writeFile(target,new Uint8Array(await r.arrayBuffer()));
+        }
+        const shim=vm.ccall("hermes_run_hbc_file","number",["string"],["/shim.hbc"]);
+        if(shim===-6)throw Error("Hermes shim: "+errs.join("\n"));
+        const rc=vm.ccall("hermes_run_hbc_file","number",["string"],["/app.hbc"]);
+        if(rc===-6)throw Error("Hermes HBC: "+errs.join("\n"));
+        const lines=out.filter(x=>x.startsWith("BENCH_RESULT:"));
+        if(lines.length!==1||!out.includes("GPUI_SCENE_OK:"+f))
+          throw Error("Bytecode output missing, rc="+rc+" stderr="+errs.join("\n"));
+        const payload=JSON.parse(lines[0].slice("BENCH_RESULT:".length));
+        if(payload.framework!==f||JSON.stringify(payload.final)!==JSON.stringify(expected))
+          throw Error("Wrong Hermes scene: "+JSON.stringify(payload.final));
+        status.textContent="PASS_HERMES_HBC_"+f.toUpperCase();
+        status.dataset.status="pass";
+        details.textContent+=f+" mutations="+payload.mutations+" runtime="+
+          JSON.stringify(payload.measurements)+"\n";
+      }catch(error){
+        status.textContent="FAIL "+String(error.stack||error);
+        status.dataset.status="fail";
+        details.textContent+=f+" "+errs.join("\n")+"\n";
+      }
+    }
+  }());
+  </script>
+</body></html>
