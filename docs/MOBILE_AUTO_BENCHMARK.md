@@ -1,6 +1,6 @@
 # Hermes + Svelte/Solid six-platform automatic execution — implementation contract
 
-Status: **G1 implementation on `feature/mobile-scene-parity`; G2/G3 are specified but NOT implemented.** This document is an executable task boundary, not six-platform completion evidence.
+Status: **G1 real mobile render evidence exists for Android Svelte/Solid (emulator CI #45282165716) and iOS Svelte/Solid (simulator CI #45278354140); G2/G3 are specified but NOT implemented.** The Android G1 success reused unchanged APKs from CI #45280068480 to isolate the screenshot verifier fix; a cold full-build CI is a separate reproducibility gate. This document is not evidence of complete six-platform performance benchmarking.
 
 ## Objective and non-objectives
 
@@ -53,7 +53,7 @@ Example G1 JSON (actual values supplied by CI, example is structural):
 
 A failure JSON uses `status=FAIL`, `stage=RENDER_TIMEOUT`, and `error`. G1 numbers are startup/screenshot probe timings, **not native Hermes VM or FPS measurements**. Final CI acceptance additionally requires *both* variants' JSON `status=PASS` and existence of both screenshots. Run `python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v` before pushing.
 
-**Current known risk:** Community `gpui-mobile` pin `5fd54f4554263ae06753e90472c7f2e2ff5d7495` depends on `gpui-pre 0.3.6`; its Android wgpu Vulkan/GLES surface selection is reported in upstream issues #34/#66 and PR #67 (not a merged fix). Do not weaken G1 screenshot verification to compensate for a renderer failure. Patch the renderer API or pin a verified version only after a real Android crash trace identifies the cause. The official desktop GPUI v1.29.3 is a different API.
+**Android renderer status (2026-11-24):** Community `gpui-mobile` remains pinned at `5fd54f4554263ae06753e90472c7f2e2ff5d7495` / `gpui-pre 0.3.6`. The isolated compatibility branch vendors the Apache-2.0 `gpui-pre-wgpu 0.3.6` crate, backports Zed PR #67323's GLES low-capability texture instance fallback, and enables a GLES-only wgpu Instance strictly in the Android emulator build. This resolved the verified compute Limits rejection and EGL Surface failure. Android AVD CI [#45282165716](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45282165716) passed G1 for **both** Svelte and Solid with screenshots, scene markers, and live PIDs. Vulkan backend crash analysis, real Android hardware and the G2/G3 live Hermes/JSI chain remain separate, unverified. Do not interpret renderer startup as HBC execution.
 
 ## G2 — actual embedded Hermes HBC → Rust → live GPUI frame
 

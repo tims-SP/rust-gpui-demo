@@ -1,4 +1,4 @@
-# GPUI Mobile compatibility adapter — BUILD-only until device proof
+# GPUI Mobile compatibility adapter — G1 real-render evidence available
 
 The canonical Svelte/Solid components are compiled and executed in the pinned
 native Ibex 2/Hermes CI. Both resulting verified scene JSON files are consumed
@@ -18,9 +18,18 @@ share an Android application ID, they are installed and run sequentially.
 For iOS the same `home.rs` works with the separate community GPUI Mobile iOS
 platform (subject to an actual simulator toolchain/runner and signing).
 
-**Not yet proven:** HBC compiled/loaded *inside* Android/iOS, UI interaction,
-mobile screenshots, full frame times, or live JSI-to-Rust Mutation delivery.
-A correct APK library and identical scene JSON do not establish those gates.
+**G1 scene-render evidence:** Android Svelte/Solid screenshots were verified
+on an API-34 x86_64 emulator using SwiftShader GLES and the opt-in backport;
+CI [#45282165716](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45282165716)
+reports 2/2 `RENDER_PASS`. It reused the *same binary APKs* built in CI
+[#45280068480](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45280068480)
+to isolate the screenshot verifier fix. iOS Svelte/Solid simulator G1 had
+previously passed in CI
+[#45278354140](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45278354140).
+
+**Not yet proven:** HBC compiled/loaded *inside* Android/iOS, UI event
+roundtrips, full frame timings or live JSI-to-Rust Mutation delivery.
+G1 renders *precomputed* Hermes scenes; it is not a live HBC benchmark.
 
 ## G1 automatic boot acceptance (implemented on this branch)
 
@@ -41,6 +50,18 @@ published crate and backports Zed PR #67323's adapter-capability fallback.
 `prepare-upstream.sh` overlays it through Cargo `[patch.crates-io]` without
 modifying the canonical Svelte/Solid precomputed Hermes scene payloads.
 The Android emulator CI disables guest Vulkan while testing this GLES path.
-The backport is **not** accepted until both scenes pass `G1` with real pixels,
-logcat's `GPUI_ANDROID_GPU_PROFILE`, and a live process. Vulkan debugging and
-live Hermes/JSI latency remain separate tasks.
+The GLES backport cleared both the original `65535 > 0` device Limits error
+and the `EGL_BAD_ALLOC` surface failure. Its GL-only Instance feature is enabled
+only for the emulator APK build, not for ARM64 physical-device builds or iOS.
+The real screenshot replay gate has passed for both Svelte and Solid, with the
+following independent checks:
+
+| G1 Android | Result | Screenshot evidence |
+|---|---|---|
+| Svelte | PASS (attempt 3; process alive) | 1080×2340, background 92.87%, 59 text bands |
+| Solid | PASS (attempt 3; process alive) | 1080×2340, background 92.90%, 59 text bands |
+
+The baseline 0.3.6 source hash, license and patch scope are recorded in
+`vendor/gpui-pre-wgpu-0.3.6/ANDROID_BACKPORT.md`.
+Vulkan, physical ARM64 device runtime, native HBC/JSI and frame timing are
+**not** claimed as verified by these G1 screenshot results.
