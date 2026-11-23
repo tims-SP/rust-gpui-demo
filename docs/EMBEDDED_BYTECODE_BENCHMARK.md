@@ -22,8 +22,8 @@ matching deterministic checksums, repeated samples, and per-process peak RSS.
 
 - [8-mode QuickJS-NG, Hermes, Bun and other JS references: Actions #45106160801](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45106160801) — [original source, compiled bytecode/ELF, process JSON and RSS](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45106160801/artifacts/14787509297). 24/24 processes passed exact checksums.
 - [PrimJS successful build, independent serialized bytecode loading and 9 process trials: Actions #45107271806](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107271806) — [PrimJS artifact](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107271806/artifacts/14788216541). Compiler/test shell is patched only for the benchmarking CLI; engine source is pinned.
-- [Escargot first successful disk cache store/reload and 9 process trials: Actions #45107138191](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107138191) — [Escargot artifact](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107138191/artifacts/14787758869). The same workflow's first PrimJS run failed because upstream requires Clang flags; the Clang fix passed on the next run.
-- [Re-run after selecting Clang and restricting Escargot submodule checkout](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107271806).
+- [Escargot successful fresh-process cache store/HIT and 9 process trials: Actions #45107271806](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107271806) — [Escargot artifact](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107271806/artifacts/14787932984). Both jobs in this workflow passed; earlier PrimJS failed on GCC-only build but recovered by explicitly selecting Clang.
+- [Verified green two-job CI run after selecting Clang and restricting Escargot submodule checkout](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45107271806).
 
 Pinned compiler source:
 - PrimJS: lynx-family/primjs at c6d670ca2250bf3ee967c7b9f28310b4a4b75e5f (Linux x86-64 ARM64 template interpreter disabled).
@@ -52,9 +52,9 @@ each Actions job, never infer precise cross-job percentage differences.
 
 | Escargot job | Numeric | Reorder | Proxy window | CSS |
 |---|---:|---:|---:|---:|
-| Bun/JSC | 24 | 23 | 76 | 194 |
-| Escargot source | 143 | 281 | 384 | 1728 |
-| Escargot cached-source | 144 | 287 | 385 | 1759 |
+| Bun/JSC | 29 | 24 | 65 | 186 |
+| Escargot source | 142 | 256 | 310 | 1481 |
+| Escargot cached-source | 141 | 255 | 309 | 1462 |
 
 ### Peak process RSS and process wall time
 
@@ -71,8 +71,8 @@ three-process median, **not JavaScript heap size** and not a memory-leak result.
 | Static Hermes native ELF | 1.62 | 14.6 |
 | PrimJS job: Bun/JSC | 0.30 | 55.9 |
 | PrimJS serialized bytecode | 2.37 | 9.4 |
-| Escargot job: Bun/JSC | 0.34 | 55.4 |
-| Escargot cached-source | 2.62 | 13.8 |
+| Escargot job: Bun/JSC | 0.32 | 55.7 |
+| Escargot cached-source | 2.19 | 13.8 |
 
 ### Recommendation and boundaries
 
