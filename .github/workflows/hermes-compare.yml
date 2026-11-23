@@ -8,6 +8,7 @@ on:
       - 'bench/engines/**'
       - 'scripts/run-hermes-case.sh'
       - 'bench/compare_engines.py'
+      - 'scripts/build-hermes-cjs.ts'
   workflow_dispatch:
 
 permissions:
@@ -65,12 +66,7 @@ jobs:
       - name: Build exactly one CommonJS file per framework
         run: |
           set -euo pipefail
-          bun build bench/engines/solid.tsx --target=node --format=cjs \
-            --preload @gpuix/solid/preload --external=@gpuix/native \
-            --production --outfile=dist/engines/solid.cjs
-          bun build bench/engines/svelte.ts --target=node --format=cjs \
-            --preload gpuix-svelte/plugin --conditions custom-renderer \
-            --external=@gpuix/native --production --outfile=dist/engines/svelte.cjs
+          bun scripts/build-hermes-cjs.ts
           for fw in solid svelte; do
             perl -pi -e 's/\bimport\(/require(/g' "dist/engines/$fw.cjs"
             echo "$fw byte length: $(wc -c < dist/engines/$fw.cjs)"
