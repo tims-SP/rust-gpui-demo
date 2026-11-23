@@ -259,6 +259,8 @@ jobs:
           toolchain: stable
           target: aarch64-apple-ios-sim
           cache: false
+      - name: Install iOS scene-specific screenshot verifier
+        run: python3 -m pip install --quiet --user --break-system-packages Pillow
       - name: Verify Hermes scenes and G1 auto-probe unit tests
         run: |
           bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
@@ -269,8 +271,6 @@ jobs:
           uname -m
           xcrun simctl list devices available
           if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
-      - name: Install iOS scene-specific screenshot verifier
-        run: python3 -m pip install --quiet --user --break-system-packages Pillow
       - name: Build two iOS .app bundles and verify actual Hermes scene screenshots
         run: bash platforms/mobile/build-ios.sh
       - uses: actions/upload-artifact@v4
