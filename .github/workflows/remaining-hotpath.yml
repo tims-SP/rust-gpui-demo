@@ -1,0 +1,70 @@
+name: Profile remaining Svelte list cost after proxy fixes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/remaining-hotpath.yml'
+      - 'bench/profile_remaining.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      XDG_SESSION_TYPE: x11
+      WINIT_UNIX_BACKEND: x11
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+      HOTPATH_PROFILE: "1"
+      THEME_ISOLATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Mesa/X11 native prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth imagemagick mesa-vulkan-drivers vulkan-tools \
+            libx11-xcb1 libxkbcommon-x11-0 libxkbcommon0 libwayland-client0 \
+            libfontconfig1 libvulkan1 fonts-noto-cjk libasound2t64 libssl3
+          mkdir -p results
+      - name: Install dependencies
+        run: bun install
+      - name: Profile original and proxy-optimized Svelte on real GPUI
+        run: |
+          set -euo pipefail
+          for trial in 41 42 43; do
+            if (( trial % 2 == 0 )); then variants=(raw scoped); else variants=(scoped raw); fi
+            for variant in "${variants[@]}"; do
+              export BENCH_CASE="$variant"
+              export SVELTE_STYLE_MODE="$variant"
+              if [ "$variant" = raw ]; then export BENCH_TRIAL="$((trial + 10))"; else export BENCH_TRIAL="$trial"; fi
+              xvfb-run -a -s "-screen 0 1280x950x24" \
+                timeout 150s bun --conditions custom-renderer \
+                --preload gpuix-svelte/plugin bench/svelte.ts \
+                2>&1 | tee "results/$variant-profile-$trial.log"
+            done
+          done
+      - name: Analyze JSC samples by source module
+        run: |
+          python3 bench/profile_remaining.py
+          cat results/REMAINING_HOTPATH.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive all profiles and native screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-svelte-remaining-hotpath
+          path: results/
+          retention-days: 30

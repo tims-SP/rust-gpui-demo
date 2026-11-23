@@ -1,0 +1,130 @@
+name: Linux GPUIX Svelte vs Solid benchmark (5-trial)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      XDG_SESSION_TYPE: x11
+      WINIT_UNIX_BACKEND: x11
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Mesa Vulkan + X11
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth imagemagick mesa-vulkan-drivers vulkan-tools \
+            libx11-xcb1 libxkbcommon-x11-0 libxkbcommon0 libwayland-client0 \
+            libfontconfig1 libvulkan1 fonts-noto-cjk libasound2t64 libssl3
+          mkdir -p results
+          vulkaninfo --summary | tee results/vulkan.txt
+          ls /usr/share/vulkan/icd.d | tee results/vulkan-icds.txt
+      - name: Install exact GPUIX adapters
+        run: |
+          bun install
+          bun pm ls | tee results/dependencies.txt
+      - name: Verify native Linux addon
+        run: |
+          bun -e 'import { GpuixRenderer } from "@gpuix/native"; if (!GpuixRenderer?.prototype?.applyBatch) throw Error("Native GPUIX addon missing"); console.log("Real GpuixRenderer loaded")'
+      - name: Run 5 interleaved native Linux trials
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          set -euo pipefail
+          for trial in 0 1 2 3 4; do
+            export BENCH_TRIAL="$trial"
+            if (( trial % 2 == 0 )); then
+              frameworks=(solid svelte)
+            else
+              frameworks=(svelte solid)
+            fi
+            for framework in "${frameworks[@]}"; do
+              echo "::group::Trial $trial / $framework"
+              xvfb-run -a -s "-screen 0 1280x950x24" \
+                timeout 150s bun run "bench:$framework" 2>&1 | tee "results/$framework-$trial.log"
+              echo "::endgroup::"
+            done
+          done
+      - name: Isolate Solid keyed-For and Svelte direct style with 3 native trials
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          set -euo pipefail
+          for trial in 5 6 7; do
+            export BENCH_TRIAL="$trial"
+            export BENCH_CASE="ids"
+            export SOLID_FOR_MODE="ids"
+            xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:solid 2>&1 | tee "results/solid-ids-$trial.log"
+            unset SOLID_FOR_MODE
+            export BENCH_CASE="inline"
+            export SVELTE_STYLE_MODE="inline"
+            export SVELTE_HOST_TRACE="1"
+            xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:svelte 2>&1 | tee "results/svelte-inline-$trial.log"
+            unset SVELTE_STYLE_MODE
+            unset SVELTE_HOST_TRACE
+            unset BENCH_CASE
+          done
+      - name: Trace Svelte host methods for 3 original-CSS trials
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+          BENCH_CASE: trace
+          SVELTE_HOST_TRACE: "1"
+        run: |
+          set -euo pipefail
+          for trial in 8 9 10; do
+            export BENCH_TRIAL="$trial"
+            xvfb-run -a -s "-screen 0 1280x950x24" timeout 150s bun run bench:svelte 2>&1 | tee "results/svelte-trace-$trial.log"
+          done
+      - name: Compare constant-style Svelte and Solid (3 runs each)
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+          BENCH_CASE: static
+          BENCH_STYLE_MODE: static
+          SVELTE_STYLE_MODE: static
+        run: |
+          set -euo pipefail
+          for trial in 11 12 13; do
+            export BENCH_TRIAL="$trial"
+            if (( trial % 2 == 0 )); then
+              frameworks=(solid svelte)
+            else
+              frameworks=(svelte solid)
+            fi
+            for framework in "${frameworks[@]}"; do
+              xvfb-run -a -s "-screen 0 1280x950x24" \
+                timeout 150s bun run "bench:$framework" 2>&1 | tee "results/$framework-static-$trial.log"
+            done
+          done
+      - name: Compare and assert all 10 runs
+        run: |
+          python3 bench/compare.py
+          python3 bench/diagnose.py
+          python3 bench/unstyled_compare.py
+          cat results/UNSTYLED.md >> "$GITHUB_STEP_SUMMARY"
+          cat results/SUMMARY.md >> "$GITHUB_STEP_SUMMARY"
+          cat results/DIAGNOSIS.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload raw results, logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-svelte-solid-5trial
+          path: results/
+          if-no-files-found: warn
+          retention-days: 30
