@@ -33,3 +33,14 @@ until its **scene-specific** pixels pass, or fail after a timeout. Results are
 The two stages are intentionally distinct; neither marker proves live HBC.
 
 Local regression: `python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v`.
+
+## Android GLES renderer backport (experimental)
+
+`vendor/gpui-pre-wgpu-0.3.6/` retains the Apache-2.0-licensed, pinned
+published crate and backports Zed PR #67323's adapter-capability fallback.
+`prepare-upstream.sh` overlays it through Cargo `[patch.crates-io]` without
+modifying the canonical Svelte/Solid precomputed Hermes scene payloads.
+The Android emulator CI disables guest Vulkan while testing this GLES path.
+The backport is **not** accepted until both scenes pass `G1` with real pixels,
+logcat's `GPUI_ANDROID_GPU_PROFILE`, and a live process. Vulkan debugging and
+live Hermes/JSI latency remain separate tasks.

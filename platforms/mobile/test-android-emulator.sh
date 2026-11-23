@@ -44,12 +44,19 @@ for f in svelte solid; do
     live="$(timeout -k 2s 12s adb shell pidof dev.gpui.mobile.example 2>/dev/null | tr -d '\r' || true)"
     echo "ANDROID_GPUI_PROCESS_DIAGNOSTIC:$f:after_probe=$live"
 
+    # The GL backport must really run on Android; ordinary screen pixels alone
+    # are insufficient if a different renderer implementation was selected.
+    gpu_profile_logged=false
+    if grep -Fq 'GPUI_ANDROID_GPU_PROFILE: backend=Gl texture_instances=true' "$out/$f-logcat.txt"; then
+        gpu_profile_logged=true
+    fi
+    echo "ANDROID_GPUI_GLES_BACKPORT_DIAGNOSTIC:$f:$gpu_profile_logged"
     scene_logged=false
     if grep -Fq "BENCH_G1_SCENE_BUILT:$f:" "$out/$f-logcat.txt"; then
         scene_logged=true
     fi
     echo "ANDROID_GPUI_SCENE_LOG_DIAGNOSTIC:$f:$scene_logged"
-    if [[ "$accepted" != true || -z "$live" || "$scene_logged" != true ]]; then
+    if [[ "$accepted" != true || -z "$live" || "$scene_logged" != true || "$gpu_profile_logged" != true ]]; then
         grep -iE 'ResumedActivity|mCurrentFocus|topResumedActivity' \
             "$out/$f-activity-state.txt" "$out/$f-window-state.txt" | tail -12 || true
         grep -iE 'gpui-mobile-example|FATAL|AndroidRuntime|Fatal signal|signal 11|emulator' \

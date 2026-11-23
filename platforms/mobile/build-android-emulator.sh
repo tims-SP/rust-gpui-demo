@@ -16,6 +16,10 @@ PY
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
 export ANDROID_NDK_HOME="$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
 test -d "$ANDROID_NDK_HOME"
+# Fail closed if Cargo resolves the registry build instead of the patched
+# crate. The no-deps metadata mode does NOT include transitive dependencies.
+cargo metadata --manifest-path "$example/Cargo.toml" --format-version 1 \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); p=[p for p in d["packages"] if p["name"] == "gpui-pre-wgpu"]; assert len(p)==1 and "benchmark-gpui-pre-wgpu" in p[0]["manifest_path"], p; print("GPUI_ANDROID_PATCH_RESOLVED:",p[0]["manifest_path"])'
 rustup target add x86_64-linux-android
 cargo install cargo-ndk --locked
 mkdir -p "$root/results/android-emulator"

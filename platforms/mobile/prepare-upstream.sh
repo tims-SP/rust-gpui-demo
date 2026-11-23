@@ -10,6 +10,25 @@ test -f "$screen_dir/home.rs"
 test -s "$scene_root/svelte.json"
 test -s "$scene_root/solid.json"
 python3 platforms/mobile/verify-scenes.py "$scene_root/svelte.json" "$scene_root/solid.json"
+# Patch the *published* gpui-pre-wgpu 0.3.6 source without replacing GPUI
+# Mobile or upgrading its wgpu 29 dependency. Both Android/iOS use this renderer.
+patched_renderer="$mobile_root/benchmark-gpui-pre-wgpu"
+cp -a platforms/mobile/vendor/gpui-pre-wgpu-0.3.6 "$patched_renderer"
+python3 - "$mobile_root" <<'PYBACKPORT'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+for path, relative in [
+    (root / 'Cargo.toml', 'benchmark-gpui-pre-wgpu'),
+    (root / 'example' / 'Cargo.toml', '../benchmark-gpui-pre-wgpu'),
+]:
+    text = path.read_text()
+    if '[patch.crates-io]' in text:
+        raise SystemExit(f'Unexpected existing cargo registry patch: {path}')
+    path.write_text(text + '\n[patch.crates-io]\ngpui-pre-wgpu = { path = "' + relative + '" }\n')
+PYBACKPORT
+echo GPUI_ANDROID_GLES_RENDERER_BACKPORT_READY
+
 cp platforms/mobile/home.rs "$screen_dir/home.rs"
 cp "$scene_root/svelte.json" "$screen_dir/hermes-svelte.json"
 cp "$scene_root/solid.json" "$screen_dir/hermes-solid.json"
