@@ -25,7 +25,12 @@ struct BenchView {
     stats: Rc<RefCell<FrameStats>>,
 }
 impl Render for BenchView {
-    fn render(&mut self,_window:&mut Window,_cx:&mut Context<Self>)->impl IntoElement {
+    fn render(&mut self,window:&mut Window,_cx:&mut Context<Self>)->impl IntoElement {
+        // macOS CI's virtual display may park the window after its initial draw.
+        // Explicitly request the next display-link frame so scheduled state updates
+        // are observed by real Render callbacks rather than merely queued effects.
+        #[cfg(target_os = "macos")]
+        window.request_animation_frame();
         if let Ok(mut s)=self.stats.try_borrow_mut(){
             s.actual_render_calls += 1;
             if let Some(issued)=s.pending_at.take(){
