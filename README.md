@@ -91,3 +91,7 @@ Results are in `results/ENGINE.md` and `results/ENGINE.json`.
 ## Isolated Svelte bottleneck experiments
 
 `cache-proxy-isolation.yml` measures the original scoped `style:--accent` CSS theme against a global `set_css_vars()` theme that can hit `rule_style()`'s generation cache. It also compares the original deep-proxied order and `tracks.slice()` window path against `$state.raw(order)` with indexed row construction. All variants use the same native Linux GPUIX runner and verify row order, mutation counts and X11 screenshots. See `results/CACHE_PROXY.md` after CI.
+
+## Function-level root cause (verified)
+
+[CPU samples, scoped CSS rule-cache misses, and deep-proxy list experiment](docs/HOTPATH_FINDINGS.md). In four warmed Linux native runs, switching an app-wide CSS token from scoped to global improved Svelte theme updates by 55.4%; raw order arrays and indexed window construction improved keyed rotation by 41.1% and window movement by 18.5%.
