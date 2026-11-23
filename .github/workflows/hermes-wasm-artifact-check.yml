@@ -1,0 +1,52 @@
+name: Hermes Wasm artifact browser diagnostics (no rebuild)
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hermes-wasm-artifact-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reuse:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          name: hermes-vm-webassembly-browser
+          run-id: 45172679896
+          github-token: ${{ github.token }}
+          path: results/ibex-hermes-wasm/
+      - name: Probe previous successfully built Wasm runtime without recompilation
+        run: |
+          mkdir -p results/ibex-hermes-wasm/diagnostics
+          cp results/ibex-hermes-wasm/browser/hermes.js results/ibex-hermes-wasm/browser/hermes.cjs
+          node bench/hermes-ibex-wasm/node-smoke.cjs \
+            > results/ibex-hermes-wasm/diagnostics/artifact-node.log 2>&1 || true
+          cat results/ibex-hermes-wasm/diagnostics/artifact-node.log
+          python3 -m http.server 8765 --bind 127.0.0.1 \
+            --directory results/ibex-hermes-wasm/browser > /tmp/ibex-web-server.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          sleep 1
+          command -v google-chrome
+          timeout 90s google-chrome --headless=new --no-sandbox --disable-gpu \
+            --disable-dev-shm-usage --virtual-time-budget=30000 \
+            --dump-dom http://127.0.0.1:8765/index.html \
+            > results/ibex-hermes-wasm/diagnostics/artifact-browser-dom.txt \
+            2> results/ibex-hermes-wasm/diagnostics/artifact-browser-stderr.txt || true
+          grep -E 'HERMES_SHARED_OK|id="result"|FAIL|PASS' \
+            results/ibex-hermes-wasm/diagnostics/artifact-browser-dom.txt || true
+          cat results/ibex-hermes-wasm/diagnostics/artifact-browser-stderr.txt | tail -n 30 || true
+      - name: Archive browser diagnostic stdout, error and DOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-wasm-artifact-diagnostics
+          path: results/ibex-hermes-wasm/diagnostics/
