@@ -70,3 +70,12 @@ Removing **all** styles left a blank native X11 frame for Svelte; that result wa
 ## CSS ablation results
 
 [See the real Linux comparison of full CSS versus fixed-only styles](docs/STYLE_ABLATION.md). Removing Svelte CSS sheets, variables and dynamic styles did not produce a significant update-speed improvement. An entirely style-free version rendered a blank window and was rejected.
+
+## JavaScript engine and runtime-mode isolation
+
+The `engine-isolation.yml` workflow launches **the same native Linux GPUIX app**
+under Svelte CLI, Svelte direct Bun with `development` condition, Svelte direct Bun
+without that condition, and Solid direct Bun. Each uses Bun 1.4.5. It records
+`process.execPath`, `process.versions`, `execArgv`, mutation counts and
+four repeated native window timings, with screenshots and live tree assertions.
+Results are in `results/ENGINE.md` and `results/ENGINE.json`.

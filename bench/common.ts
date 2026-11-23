@@ -144,7 +144,25 @@ export async function writeResult(framework: string, phases: Record<string, Time
   if (imageStats.status !== 0 || !Number.isFinite(deviation) || deviation <= 0) {
     throw new Error("X11 screenshot is empty/unreadable (stddev=" + deviation + "): " + imageStats.stderr?.toString());
   }
-  const data = { framework, testCase: process.env.BENCH_CASE ?? "baseline", runtime: "Bun", platform: process.platform,
+  const details = {
+    execPath: process.execPath,
+    execArgv: process.execArgv,
+    argv: process.argv,
+    versions: {
+      bun: process.versions.bun ?? null,
+      v8: process.versions.v8 ?? null,
+      node: process.versions.node ?? null,
+      jsc: (process.versions as Record<string, string>).jsc ?? null,
+    },
+    env: {
+      NODE_ENV: process.env.NODE_ENV ?? null,
+      BUN_ENV: process.env.BUN_ENV ?? null,
+    },
+    bunVersion: typeof Bun !== "undefined" ? Bun.version : null,
+  };
+  if (!details.versions.bun) throw new Error("Benchmark must run under Bun/JavaScriptCore");
+  console.log("RUNTIME_PROBE=" + JSON.stringify({ framework, case: process.env.BENCH_CASE, ...details }));
+  const data = { framework, testCase: process.env.BENCH_CASE ?? "baseline", runtime: details, platform: process.platform,
     backend: "real GpuixRenderer Linux window (Xvfb + Mesa Vulkan software rasterizer)",
     trial, rows: 48, datasetRows: 10000, phases,
     retainedTreeBytes: Buffer.byteLength(tree), visibleSongs: visibleSongs.length,
