@@ -10,7 +10,9 @@ export function collectHotpathProfiles(framework: "solid" | "svelte", cases: Sce
   const token = process.env.BENCH_TRIAL ?? "0";
   for (const item of cases) {
     // First warm the exact loop; JIT tiering should not be conflated with initial code loading.
-    for (let i = 0; i < Math.min(200, item.iterations); i++) item.run(i);
+    // Keyed rotation has a 48-item cycle; warmup must not alter final ordering.
+    const warmup = item.name === "reorder" ? 192 : Math.min(200, item.iterations);
+    for (let i = 0; i < warmup; i++) item.run(i);
     const start = performance.now();
     const result = profile(() => {
       for (let i = 0; i < item.iterations; i++) item.run(i);
