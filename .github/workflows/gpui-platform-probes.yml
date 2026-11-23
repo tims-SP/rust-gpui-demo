@@ -282,7 +282,7 @@ jobs:
   android-hermes-scenes-emulator:
     if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all' || inputs.scope == 'android-avd'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -329,9 +329,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_5
-          emulator-boot-timeout: 1200
+          emulator-boot-timeout: 600
           disable-linux-hw-accel: false
-          emulator-options: '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim'
+          emulator-options: '-no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim'
           disable-animations: true
           script: bash platforms/mobile/test-android-emulator.sh
       - uses: actions/upload-artifact@v4
