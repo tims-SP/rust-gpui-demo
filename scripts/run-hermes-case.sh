@@ -7,12 +7,24 @@ export BENCH_ENGINE="$engine" BENCH_TRIAL="$trial"
 export NODE_PATH="$PWD/node_modules"
 out="results/$engine-$framework-$trial"
 mkdir -p results
-if [ "$engine" = hermes ]; then
-  executable="${HERMES_NODE:?hermes-node path missing}"
-  launch=("$executable" "--no-compile-cache" "dist/engines/$framework.cjs")
-else
-  launch=(bun "dist/engines/$framework.cjs")
-fi
+case "$engine" in
+  hermes)
+    launch=("${HERMES_NODE:?hermes-node path missing}" "--no-compile-cache" "dist/engines/$framework.cjs")
+    ;;
+  hermes-opt)
+    launch=("${HERMES_NODE:?hermes-node path missing}" "--no-compile-cache" "--optimize=on" "dist/engines/$framework.cjs")
+    ;;
+  hermes-aot)
+    launch=("${HERMES_NODE:?hermes-node path missing}" "--bundle=dist/engines/$framework.bundle")
+    ;;
+  bun)
+    launch=(bun "dist/engines/$framework.cjs")
+    ;;
+  *)
+    echo "Unknown engine: $engine" >&2
+    exit 2
+    ;;
+esac
 "${launch[@]}" > "$out.log" 2>&1 &
 pid=$!
 ready=0
