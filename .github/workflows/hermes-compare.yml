@@ -77,6 +77,21 @@ jobs:
       - name: Precompile the exact same JS bundles into Hermes bytecode
         run: |
           set -euo pipefail
+          # hermes-node 0.0.2 bundler ignores package.exports.require and reads package.main.
+          # Point only the CI-installed dependency manifest at its existing CJS entry.
+          # The JS bundles themselves, .node binding and source remain unchanged.
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          manifest=Path('node_modules/@gpuix/native/package.json')
+          pkg=json.loads(manifest.read_text())
+          require_entry=pkg['exports']['.']['require']
+          assert require_entry=='./index.cjs'
+          assert (manifest.parent/require_entry).exists()
+          pkg['main']=require_entry
+          manifest.write_text(json.dumps(pkg,indent=2)+'\\n')
+          print('Hermes bundle package main now:',pkg['main'])
+          PY
           for fw in solid svelte; do
             "$HERMES_NODE" --build-bundle="dist/engines/$fw.bundle" "dist/engines/$fw.cjs" \
               2>&1 | tee "results/hermes-aot-build-$fw.log"
