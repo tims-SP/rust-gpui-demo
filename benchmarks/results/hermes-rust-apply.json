@@ -1,0 +1,54 @@
+{
+  "source_run_id": 45247776226,
+  "platform": "linux-runner-only",
+  "source": "actual Hermes HBC-exported Mutation JSON replayed by Rust Scene",
+  "is_full_ui_chain": false,
+  "frameworks": {
+    "svelte": {
+      "batches": 7,
+      "elapsed_us": [
+        220026,
+        219162,
+        219279,
+        219402,
+        222791,
+        218885,
+        218899
+      ],
+      "framework": "svelte",
+      "includes_gpu": false,
+      "includes_jsi": false,
+      "independent_trials": 7,
+      "operations": 53095,
+      "p50_us": 219279,
+      "p95_us": 222791,
+      "p99_us": 222791,
+      "schema": "rust-hermes-mutation-apply/v1",
+      "scope": "Rust-apply-batch-CPU-including-transactional-cloning",
+      "source": "actual-Ibex2-Hermes-HBC-exported-batches"
+    },
+    "solid": {
+      "batches": 7,
+      "elapsed_us": [
+        327236,
+        326663,
+        330422,
+        326566,
+        326665,
+        330874,
+        326264
+      ],
+      "framework": "solid",
+      "includes_gpu": false,
+      "includes_jsi": false,
+      "independent_trials": 7,
+      "operations": 47017,
+      "p50_us": 326665,
+      "p95_us": 330874,
+      "p99_us": 330874,
+      "schema": "rust-hermes-mutation-apply/v1",
+      "scope": "Rust-apply-batch-CPU-including-transactional-cloning",
+      "source": "actual-Ibex2-Hermes-HBC-exported-batches"
+    }
+  }
+}
