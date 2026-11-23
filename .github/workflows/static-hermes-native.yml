@@ -1,4 +1,4 @@
-name: Static Hermes native AOT vs Bun and Hermes bytecode (JS kernels)
+name: Six-engine JS kernels - Static Hermes vs V8, SpiderMonkey, QuickJS, JSC
 
 on:
   push:
@@ -19,6 +19,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.2"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.5"
@@ -27,9 +30,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             clang cmake ninja-build build-essential python3 tzdata libreadline-dev \
-            file binutils
+            file binutils libmozjs-115-dev quickjs
           clang --version
           bun --version
+          node --version
+          test -x "$(command -v js115)"
+          test -x "$(command -v qjs)"
+          dpkg-query -W quickjs libmozjs-115-dev | tee results-engine-packages.txt
       - name: Checkout upstream Static Hermes at immutable commit
         uses: actions/checkout@v4
         with:
@@ -81,20 +88,23 @@ jobs:
             | grep -F '.text' | tee results/static-hermes/native-text-section.txt
           sha256sum results/static-hermes/kernels-native results/static-hermes/kernels.hbc \
             | tee results/static-hermes/compiled-sha256.txt
-      - name: Execute same workload under three engines (3 process trials)
+      - name: Execute identical JS source under six engine modes (3 independent processes each)
         run: |
           set -euo pipefail
           for trial in 0 1 2; do
             if ((trial % 2 == 0)); then
-              engines=(bun-jsc hermes-bytecode static-hermes-native)
+              engines=(bun-jsc node-v8 spidermonkey-115 quickjs-2021 hermes-bytecode static-hermes-native)
             else
-              engines=(static-hermes-native hermes-bytecode bun-jsc)
+              engines=(static-hermes-native hermes-bytecode quickjs-2021 spidermonkey-115 node-v8 bun-jsc)
             fi
             for engine in "${engines[@]}"; do
               echo "::group::$engine trial=$trial"
               prefix="results/static-hermes/$engine-$trial"
               case "$engine" in
                 bun-jsc) cmd=(bun bench/static-hermes/kernels.js);;
+                node-v8) cmd=(node bench/static-hermes/kernels.js);;
+                spidermonkey-115) cmd=(js115 bench/static-hermes/kernels.js);;
+                quickjs-2021) cmd=(qjs bench/static-hermes/kernels.js);;
                 hermes-bytecode) cmd=(.static-hermes-build/bin/hermes results/static-hermes/kernels.hbc);;
                 static-hermes-native) cmd=(results/static-hermes/kernels-native);;
               esac
@@ -130,4 +140,5 @@ jobs:
           path: |
             bench/static-hermes/kernels.js
             results/static-hermes/
+            results-engine-packages.txt
           retention-days: 30

@@ -1,56 +1,94 @@
 #!/usr/bin/env python3
-"""Verify checksums for identical kernel source; compare pre-warmed in-program durations."""
+"""Validate identical JS semantics and report six-engine performance on Linux."""
 import json
 from pathlib import Path
 from statistics import median
 
-p = Path("results/static-hermes")
-engines = ("bun-jsc", "hermes-bytecode", "static-hermes-native")
-scenarios = ("numeric", "keyed_reorder", "proxied_visible_window", "scoped_css_substitution")
+ROOT = Path("results/static-hermes")
+ENGINES = (
+    "bun-jsc",
+    "node-v8",
+    "spidermonkey-115",
+    "quickjs-2021",
+    "hermes-bytecode",
+    "static-hermes-native",
+)
+SCENARIOS = (
+    "numeric",
+    "keyed_reorder",
+    "proxied_visible_window",
+    "scoped_css_substitution",
+)
+TRIALS = 3
 samples = {}
-for engine in engines:
+for engine in ENGINES:
     rows = []
-    for trial in range(3):
-        f = p / f"{engine}-{trial}.json"
-        assert f.is_file(), f"Missing test result {f}"
-        rec = json.loads(f.read_text())
-        assert rec["engine"] == engine and rec["trial"] == trial
+    for trial in range(TRIALS):
+        path = ROOT / f"{engine}-{trial}.json"
+        assert path.is_file(), f"Missing benchmark: {path}"
+        rec = json.loads(path.read_text())
+        assert (rec["engine"], rec["trial"]) == (engine, trial)
         assert rec["workload"] == "gpui-inspired-pure-js-not-native-ui"
-        assert [x["name"] for x in rec["cases"]] == list(scenarios)
-        for case in rec["cases"]:
-            assert case["elapsedMs"] >= 0 and case["rounds"] > 0
+        assert [case["name"] for case in rec["cases"]] == list(SCENARIOS)
+        assert all(case["elapsedMs"] >= 0 and case["rounds"] > 0 for case in rec["cases"])
         rows.append(rec)
     samples[engine] = rows
-for scenario in scenarios:
-    ref = {(x["name"], x["rounds"], x["checksum"]) for x in samples["bun-jsc"][0]["cases"] if x["name"] == scenario}
-    for engine in engines:
-        for run in samples[engine]:
-            v = {(x["name"], x["rounds"], x["checksum"]) for x in run["cases"] if x["name"] == scenario}
-            assert v == ref, f"JS semantics mismatch for {engine}/{scenario}: {v} != {ref}"
 
 def field(run, scenario):
-    return next(x for x in run["cases"] if x["name"] == scenario)
+    return next(c for c in run["cases"] if c["name"] == scenario)
+
+def signature(run, scenario):
+    c = field(run, scenario)
+    return (c["name"], c["rounds"], c["checksum"])
+
+for scenario in SCENARIOS:
+    expected = signature(samples["bun-jsc"][0], scenario)
+    for engine in ENGINES:
+        for rec in samples[engine]:
+            actual = signature(rec, scenario)
+            assert actual == expected, (
+                f"JS checksum mismatch: {engine}/{scenario}: {actual} != {expected}"
+            )
+
+medians = {}
+for scenario in SCENARIOS:
+    medians[scenario] = {
+        eng: median(field(run, scenario)["elapsedMs"] for run in samples[eng])
+        for eng in ENGINES
+    }
 
 rows = [
-    "# Static Hermes REAL machine-code benchmark (Linux x86-64)", "",
-    "Three independent processes per engine, same unchanged JS source, with two untimed warm-up loops.",
-    "The shermes program is compiled with `shermes -O -o` to an ELF executable.",
-    "The bytecode comparison is emitted by the *same checkout* of Hermes and run under its `hermes` CLI.",
-    "The Bun reference uses JavaScriptCore. No native GPUI window or Node-API bridge is exercised.",
-    "Measurements are `Date.now()` within JS, with millisecond resolution; very small timings are noisy.",
-    "Each engine produces **matching deterministic checksums** in all cases.", "",
-    "| JS kernel | Bun/JSC ms | Hermes bytecode ms | Static Hermes native ms | Native / Bun | Native / bytecode |",
-    "|---|---:|---:|---:|---:|---:|",
+    "# Six-engine Linux x86-64 JavaScript kernel comparison", "",
+    "All 18 independent processes successfully executed the same unmodified JS source.",
+    "Each process uses two untimed warm-up invocations per kernel; all output checksums match.",
+    "Bun 1.4.5 uses JavaScriptCore; Node 24.22.2 uses V8; Ubuntu 24.04 packages",
+    "provide SpiderMonkey 115 and QuickJS 2021. Hermes bytecode and native AOT are",
+    "built from the same pinned upstream source commit (shermes produces ELF machine code).",
+    "Measurements use in-JS Date.now() millisecond resolution and three-process medians.",
+    "Older SpiderMonkey and QuickJS versions are reference points, not current-engine rankings.",
+    "No actual GPUIX native UI, Rust FFI, or GPU frames are included.", "",
+    "| Kernel (lower is better) | Bun / JSC | Node / V8 | SpiderMonkey 115 | QuickJS 2021 | Hermes bytecode | Static Hermes native | Native / Node | Native / Bun |",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
 ]
-for scene in scenarios:
-    values = {eng: median(field(x, scene)["elapsedMs"] for x in samples[eng]) for eng in engines}
-    b, h, s = (values[eng] for eng in engines)
-    rows.append(f"| {scene} | {b:.1f} | {h:.1f} | {s:.1f} | {s / b if b else float('nan'):.2f}× | {s / h if h else float('nan'):.2f}× |")
+for scenario, x in medians.items():
+    bun = x["bun-jsc"]
+    node = x["node-v8"]
+    native = x["static-hermes-native"]
+    parts = [x[e] for e in ENGINES]
+    rows.append(
+        f"| {scenario} | " +
+        " | ".join(f"{v:.1f}" for v in parts) +
+        f" | {native / node if node else float('nan'):.2f}x | {native / bun if bun else float('nan'):.2f}x |"
+    )
 rows += [
-    "", "Scope restriction: ordinary untyped JS AOT machine code, **not** Static Hermes soundly typed Flow code.",
-    "Static Hermes does not provide the hermes-node Node-API runtime automatically; this benchmark cannot determine actual GPUIX window or FFI performance.",
-    "To prove a GPUIX result, an explicit Node-API/JSI embedding layer or equivalent host is required and must be evaluated separately.",
+    "", "Interpretation: compares sampled *untyped* JS execution throughput only.",
+    "Do not extrapolate to soundly typed Static Hermes, Node-API interop, start-up,",
+    "end-to-end GPUIX/Svelte/Solid native updates, or actual device workloads.",
+    "Engine startup and memory are captured as per-process resource files, not",
+    "used to claim comparable production memory footprints.",
 ]
-(p / "REPORT.md").write_text("\n".join(rows) + "\n")
-(p / "REPORT.json").write_text(json.dumps(samples, indent=2) + "\n")
+(ROOT / "REPORT.md").write_text("\n".join(rows) + "\n")
+(ROOT / "REPORT.json").write_text(json.dumps(
+    {"engines": ENGINES, "trials": TRIALS, "medians_ms": medians,
+     "samples": samples}, indent=2) + "\n")
 print("\n".join(rows))
