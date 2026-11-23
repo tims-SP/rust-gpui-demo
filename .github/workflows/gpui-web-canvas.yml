@@ -86,6 +86,15 @@ jobs:
               "http://127.0.0.1:8975/?f=$f" \
               > "results/gpui-web/$f-stdout.log" 2> "results/gpui-web/$f-stderr.log"
             python3 platforms/web/verify-gpui-canvas.py "results/gpui-web/$f.png"
+            timeout 140s google-chrome --headless=new --no-sandbox \
+              --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+              --disable-dev-shm-usage --window-size=1200,950 \
+              --virtual-time-budget=60000 --dump-dom \
+              "http://127.0.0.1:8975/?f=$f" \
+              > "results/gpui-web/$f-dom.html" 2> "results/gpui-web/$f-dom-stderr.log"
+            python3 tools/extract-gpui-web.py \
+              --dom "results/gpui-web/$f-dom.html" --framework "$f" \
+              --out "results/gpui-web/$f-metrics.json"
           done
           echo GPUI_WEB_REAL_CANVAS_BOTH_SCENES_PASS
       - uses: actions/upload-artifact@v4
