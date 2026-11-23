@@ -1,0 +1,96 @@
+name: Real GPUI Web Canvas from Hermes Svelte and Solid scenes
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gpui-web-canvas.yml'
+      - 'platforms/web/gpui-web-scene.rs'
+      - 'platforms/web/gpui-web-scene.html'
+      - 'platforms/web/verify-gpui-canvas.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  gpui-real-web-canvas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: v1.29.3
+          path: .zed-source
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45197307921
+          github-token: ${{ github.token }}
+          path: results/hermes/
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+          target: wasm32-unknown-unknown
+          components: rust-src
+          cache: false
+      - name: Install official GPUI Web build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config python3-pil curl
+          cargo install trunk --locked
+      - name: Overlay actual Hermes scenes onto upstream GPUI Web example
+        run: |
+          set -euo pipefail
+          sample=.zed-source/crates/gpui_web/examples/hello_web
+          cp platforms/web/gpui-web-scene.rs "$sample/main.rs"
+          cp platforms/web/gpui-web-scene.html "$sample/index.html"
+          cp results/hermes/svelte.json "$sample/scene-svelte.json"
+          cp results/hermes/solid.json "$sample/scene-solid.json"
+          echo 'serde_json = "1"' >> "$sample/Cargo.toml"
+          test -s "$sample/scene-svelte.json" && test -s "$sample/scene-solid.json"
+      - name: Compile official GPUI Web Canvas renderer using WebAssembly
+        working-directory: .zed-source/crates/gpui_web/examples/hello_web
+        env:
+          RUSTUP_TOOLCHAIN: nightly
+          CARGO_BUILD_JOBS: '3'
+        run: trunk build --release --public-url /
+      - name: Launch and verify both framework scenes rendered in real Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results/gpui-web
+          cat > results/gpui-web/serve.py <<'PY'
+          import http.server
+          class H(http.server.SimpleHTTPRequestHandler):
+              def end_headers(self):
+                  self.send_header("Cross-Origin-Opener-Policy","same-origin")
+                  self.send_header("Cross-Origin-Embedder-Policy","require-corp")
+                  super().end_headers()
+          http.server.ThreadingHTTPServer(("127.0.0.1", 8975),lambda *args: H(*args,directory=".zed-source/crates/gpui_web/examples/hello_web/dist")).serve_forever()
+          PY
+          python3 results/gpui-web/serve.py > results/gpui-web/server.log 2>&1 &
+          server=$!
+          trap 'kill "$server" 2>/dev/null || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8975/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          for f in svelte solid; do
+            timeout 140s google-chrome --headless=new --no-sandbox \
+              --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
+              --disable-dev-shm-usage --window-size=1200,950 \
+              --virtual-time-budget=60000 \
+              --screenshot="$GITHUB_WORKSPACE/results/gpui-web/$f.png" \
+              "http://127.0.0.1:8975/?f=$f" \
+              > "results/gpui-web/$f-stdout.log" 2> "results/gpui-web/$f-stderr.log"
+            python3 platforms/web/verify-gpui-canvas.py "results/gpui-web/$f.png"
+          done
+          echo GPUI_WEB_REAL_CANVAS_BOTH_SCENES_PASS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-web-official-canvas-svelte-solid
+          path: results/gpui-web/
+          retention-days: 30
