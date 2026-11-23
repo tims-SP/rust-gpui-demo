@@ -1,0 +1,86 @@
+name: GPUI Windows macOS iOS Android build feasibility
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/gpui-platform-probes.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop-gpui-compile:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            label: windows
+          - os: macos-15
+            label: macos
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: v1.29.3
+          path: .zed-source
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+      - name: Insert real Hermes scene GPUI view into upstream example
+        shell: bash
+        run: cp platforms/native/bench_view.rs .zed-source/crates/gpui/examples/hello_world.rs
+      - name: Compile desktop GPUI example
+        shell: bash
+        working-directory: .zed-source
+        env:
+          CARGO_BUILD_JOBS: '3'
+        run: cargo build -p gpui --example hello_world
+      - name: Report compile-only, not run/render
+        shell: bash
+        run: echo "GPUI_DESKTOP_COMPILE_PASS:${{ matrix.label }}"
+  ios-gpui-compile:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: v1.29.3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios-sim
+          cache: false
+      - name: Compile upstream GPUI iOS platform backend for Simulator
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-path
+          cargo check -p gpui_ios --target aarch64-apple-ios-sim
+          echo GPUI_IOS_BACKEND_COMPILE_PASS
+  android-gpui-mobile-compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          path: .gpui-mobile
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android
+          cache: false
+      - name: Cross-compile existing Android GPUI Mobile example
+        shell: bash
+        run: |
+          set -eo pipefail
+          export ANDROID_NDK_HOME="$(find /usr/local/lib/android/sdk/ndk -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -d "$ANDROID_NDK_HOME"
+          export PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=aarch64-linux-android26-clang
+          cd .gpui-mobile/example
+          cargo check --target aarch64-linux-android
+          echo GPUI_ANDROID_BACKEND_COMPILE_PASS
