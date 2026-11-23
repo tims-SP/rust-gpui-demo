@@ -1,7 +1,12 @@
 "use strict";
 const fs = require("node:fs");
 const path = require("node:path");
-const createVM = require(path.resolve("results/ibex-hermes-wasm/browser/hermes.js"));
+// Emscripten emits CommonJS, while this repository declares .js as ESM.
+const glue = path.resolve("results/ibex-hermes-wasm/browser/hermes.js");
+const commonjs = path.resolve("results/ibex-hermes-wasm/browser/hermes.cjs");
+fs.copyFileSync(glue, commonjs);
+const createVM = require(commonjs);
+if (typeof createVM !== "function") throw Error("Hermes Wasm factory unavailable");
 (async () => {
   const output = [];
   const vm = await createVM({

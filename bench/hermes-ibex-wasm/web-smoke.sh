@@ -16,7 +16,7 @@ test -f .hermes-host/ImportHostCompilers.cmake
 # Browser fetches bytecode into MEMFS, so NODERAWFS is deliberately disabled.
 flags="-sMODULARIZE=1 -sEXPORT_NAME=CreateHermesVM -sENVIRONMENT=web,node"
 flags="$flags -sEXPORTED_RUNTIME_METHODS=FS,callMain -sINVOKE_RUN=0"
-flags="$flags -sFORCE_FILESYSTEM=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=262144"
+flags="$flags -sFORCE_FILESYSTEM=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=262144 -sEXIT_RUNTIME=1"
 emcmake cmake -S .hermes-source -B .hermes-wasm -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DIMPORT_HOST_COMPILERS="$(pwd)/.hermes-host/ImportHostCompilers.cmake" \
