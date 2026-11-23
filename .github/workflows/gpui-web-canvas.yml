@@ -56,6 +56,8 @@ jobs:
           RUSTUP_TOOLCHAIN: nightly
           CARGO_BUILD_JOBS: '3'
         run: trunk build --release --public-url /
+      - name: Install persistent browser automation (system Chrome only)
+        run: python3 -m pip install --user --break-system-packages --quiet 'playwright>=1.50,<2'
       - name: Launch and verify both framework scenes rendered in real Chromium
         shell: bash
         run: |
@@ -78,20 +80,12 @@ jobs:
             sleep 1
           done
           for f in svelte solid; do
-            timeout 140s google-chrome --headless=new --no-sandbox \
-              --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
-              --disable-dev-shm-usage --window-size=1200,950 \
-              --virtual-time-budget=60000 \
-              --screenshot="$GITHUB_WORKSPACE/results/gpui-web/$f.png" \
-              "http://127.0.0.1:8975/?f=$f" \
-              > "results/gpui-web/$f-stdout.log" 2> "results/gpui-web/$f-stderr.log"
+            python3 platforms/web/verify-gpui-live.py \
+              --url "http://127.0.0.1:8975/?f=$f" \
+              --screenshot "results/gpui-web/$f.png" \
+              --dom "results/gpui-web/$f-dom.html" \
+              --log "results/gpui-web/$f-live-browser.log"
             python3 platforms/web/verify-gpui-canvas.py "results/gpui-web/$f.png"
-            timeout 140s google-chrome --headless=new --no-sandbox \
-              --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
-              --disable-dev-shm-usage --window-size=1200,950 \
-              --virtual-time-budget=60000 --dump-dom \
-              "http://127.0.0.1:8975/?f=$f" \
-              > "results/gpui-web/$f-dom.html" 2> "results/gpui-web/$f-dom-stderr.log"
             python3 tools/extract-gpui-web.py \
               --dom "results/gpui-web/$f-dom.html" --framework "$f" \
               --out "results/gpui-web/$f-metrics.json"
