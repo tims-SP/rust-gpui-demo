@@ -101,6 +101,36 @@ jobs:
           echo "Hermes failing location diagnostic (solid.cjs:1435-1465)"
           awk 'NR>=1435 && NR<=1465 {printf "%d %s\\n",NR,$0}' dist/engines/solid.cjs
           grep -nE 'require\\(' dist/engines/solid.cjs | head -n 35 || true
+      - name: Inspect produced AOT bytecode (not native machine code)
+        run: |
+          set -euo pipefail
+          for fw in solid svelte; do
+            bundle="dist/engines/$fw.bundle"
+            "$HERMES_NODE" "--bundle=$bundle" --dump > "results/hermes-$fw-bundle-dump.txt"
+            entry="$(python3 - "$bundle" "results/hermes-$fw-bundle-dump.txt" <<'PY'
+          import re, sys
+          dump=open(sys.argv[2]).read()
+          m=re.search(r"^entry:\s+\[\d+\]\s+(.+)$",dump,re.M)
+          assert m, "Could not determine bytecode entry: "+sys.argv[1]
+          assert "MODULES (" in dump and " js " in dump, "Missing JS bytecode modules"
+          assert m.group(1).endswith(".cjs"), "Expected bundled CJS: "+repr(m.group(1))
+          print(m.group(1).strip())
+          PY
+            )"
+            "$HERMES_NODE" "--bundle=$bundle" "--extract-module=$entry" \
+              "--out=results/hermes-$fw-entry.hbc"
+            test -s "results/hermes-$fw-entry.hbc"
+            "$HERMES_NODE" "--dump-bytecode=results/hermes-$fw-entry.hbc" \
+              > "results/hermes-$fw-bytecode-disassembly.txt"
+            grep -Fq "Byte range of each section in bytecode:" \
+              "results/hermes-$fw-bytecode-disassembly.txt"
+            head -n 100 "results/hermes-$fw-bytecode-disassembly.txt" \
+              > "results/hermes-$fw-bytecode-proof.txt"
+            rm "results/hermes-$fw-bytecode-disassembly.txt"
+            sha256sum "$bundle" "results/hermes-$fw-entry.hbc" \
+              | tee "results/hermes-$fw-bytecode-sha256.txt"
+            echo "Verified prebuilt optimized bytecode for $fw (NOT Static Hermes native code)"
+          done
       - name: Run both compiled applications in both engines, 3 native trials
         run: |
           set -euo pipefail

@@ -56,3 +56,21 @@ End-of-workload process RSS snapshots were approximately 191–204 MiB for Bun, 
 Keep **Bun/JSC as the performance baseline** for this Linux music-list UI. Hermes is technically viable and consumes less memory in this small snapshot, but should not replace the default runtime for steady-state update performance on the evidence above. Hermes AOT's startup and distribution-size benefits remain an independent possible product reason to use it, and must be measured before adoption.
 
 The test does **not** establish comparative Linux physical GPU frame time, production memory leaks, Android/iOS runtime support, or fair real-world launch latency. No upstream fork is required for these Linux results. 
+
+## Verified meaning of AOT (audit)
+
+**AOT means ahead-of-time optimized Hermes BYTECODE, not machine-code compilation.**
+The actual workflow invokes `hermes-node --build-bundle=... app.cjs` and then
+executes `hermes-node --bundle=...`. Upstream v0.0.2
+[`lib/bundle/bundle_build.cpp`](https://github.com/tmikov/hermes-node/blob/v0.0.2/lib/bundle/bundle_build.cpp)
+uses `hermes_compile_to_bytecode` with `cflags.optimize = true`;
+[`lib/bundle/bundle_run.cpp`](https://github.com/tmikov/hermes-node/blob/v0.0.2/lib/bundle/bundle_run.cpp)
+executes it with `hermes_run_bytecode`. No `shermes` or Static Hermes native
+code generation was invoked. The current CI adds a strict `--dump`,
+`--extract-module`, `--dump-bytecode` check for both bundles and archives
+actual entry-module bytecode, disassembly header and SHA256 evidence.
+
+**Important:** `hermes-opt` compiles optimized bytecode when running the source;
+`hermes-aot` compiles it during the preceding build step and loads it at runtime.
+The AOT performance table compares Hermes bytecode interpretation against JSC,
+*not* native machine code from Static Hermes.
