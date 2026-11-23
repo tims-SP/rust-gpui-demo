@@ -21,8 +21,10 @@ import sys
 p=Path(sys.argv[1]); source=p.read_text()
 if 'serde_json = "1"' not in source:
     source=source.replace('[dependencies]\n','[dependencies]\nserde_json = "1"\n',1)
+if 'bench-auto = []' not in source and '[features]' in source:
+    source=source.replace('[features]\n','[features]\nbench-auto = []\n',1)
 if '[features]' not in source:
-    source+='\n[features]\nsolid-demo = []\n'
+    source+='\n[features]\nsolid-demo = []\nbench-auto = []\n'
 elif 'solid-demo = []' not in source:
     source=source.replace('[features]\n','[features]\nsolid-demo = []\n',1)
 p.write_text(source)

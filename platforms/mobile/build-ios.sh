@@ -29,13 +29,13 @@ PY
 # platform-specific dead_code (open_main_window). Keep source unchanged.
 export RUSTFLAGS="-A dead_code"
 for framework in svelte solid; do
-    export GPUI_HERMES_FEATURES=""
+    export GPUI_HERMES_FEATURES="--features bench-auto"
     if [[ "$framework" == "solid" ]]; then
-        export GPUI_HERMES_FEATURES="--features solid-demo"
+        export GPUI_HERMES_FEATURES="--features bench-auto --features solid-demo"
     fi
     # Xcode checks the absolute .a input before running the upstream prebuild
     # phase. Build it first and resolve the *actual* Cargo target directory.
-    rust_opts=()
+    rust_opts=(--features bench-auto)
     if [[ "$framework" == solid ]]; then rust_opts+=(--features solid-demo); fi
     target_dir="$(cd "$example" && cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys;print(json.load(sys.stdin)["target_directory"])')"
     (cd "$example" && cargo build --lib --target aarch64-apple-ios-sim "${rust_opts[@]}") \
@@ -95,11 +95,15 @@ for framework in svelte solid; do
     app="$root/results/ios/DerivedData-$framework/Build/Products/Debug-iphonesimulator/GpuiExample.app"
     xcrun simctl install "$device" "$app"
     xcrun simctl launch "$device" dev.gpui.mobile.example
-    sleep 8
-    image="$root/results/ios/$framework-simulator.png"
-    xcrun simctl io "$device" screenshot "$image"
-    test "$(stat -f%z "$image")" -gt 20000
-    python3 platforms/mobile/verify-ios-image.py "$image"
+    # No fixed sleeps: wait for the target Hermes Home pixels; preserve a
+    # result JSON and last screenshot even if the probe times out.
+    if ! python3 platforms/mobile/g1_probe.py ios \
+        --framework "$framework" --device "$device" \
+        --output-dir "$root/results/ios" --timeout-sec 90 --interval-sec 3; then
+        echo "GPUI_IOS_G1_NOT_VERIFIED:$framework" >&2
+        xcrun simctl terminate "$device" dev.gpui.mobile.example || true
+        exit 1
+    fi
     echo "GPUI_IOS_SIMULATOR_HERMES_SCENE_RENDER_PASS:$framework"
     xcrun simctl terminate "$device" dev.gpui.mobile.example || true
 done

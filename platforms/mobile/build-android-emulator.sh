@@ -20,7 +20,7 @@ rustup target add x86_64-linux-android
 cargo install cargo-ndk --locked
 mkdir -p "$root/results/android-emulator"
 for f in svelte solid; do
-    features=()
+    features=(--features bench-auto)
     if [[ "$f" == solid ]]; then features+=(--features solid-demo); fi
     (
         cd "$example"

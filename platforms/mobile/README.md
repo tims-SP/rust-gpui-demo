@@ -21,3 +21,15 @@ platform (subject to an actual simulator toolchain/runner and signing).
 **Not yet proven:** HBC compiled/loaded *inside* Android/iOS, UI interaction,
 mobile screenshots, full frame times, or live JSI-to-Rust Mutation delivery.
 A correct APK library and identical scene JSON do not establish those gates.
+
+## G1 automatic boot acceptance (implemented on this branch)
+
+See [six-platform auto-benchmark implementation contract](../../docs/MOBILE_AUTO_BENCHMARK.md).
+Build with the `bench-auto` Cargo feature: the Rust GPUI Home view logs
+`BENCH_G1_SCENE_BUILT` when its validated *element tree* is constructed.
+Actions then invoke `g1_probe.py` to poll a genuine ADB or simctl screenshot
+until its **scene-specific** pixels pass, or fail after a timeout. Results are
+`{svelte,solid}-g1.json` with `actual_hermes_vm_on_device: false`.
+The two stages are intentionally distinct; neither marker proves live HBC.
+
+Local regression: `python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v`.

@@ -5,6 +5,11 @@ use gpui::{div, prelude::*, rgb};
 use serde_json::Value;
 use super::Router;
 
+// G1 auto-test only: building the Home node tree is NOT a presented frame.
+// The Actions screenshot probe alone emits BENCH_G1_RENDER_PASS.
+#[cfg(feature = "bench-auto")]
+static BOOT_SCENE_MARKER: std::sync::Once = std::sync::Once::new();
+
 #[cfg(feature = "solid-demo")]
 const FRAMEWORK: &str = "solid";
 #[cfg(not(feature = "solid-demo"))]
@@ -54,6 +59,11 @@ pub fn render(_router: &Router, _cx: &mut gpui::Context<Router>) -> impl IntoEle
     assert_eq!(rows.len(), 48, "Not all virtualized Hermes rows rendered");
     assert_eq!(rows.first().map(String::as_str), Some("Track 40"));
     assert_eq!(rows.last().map(String::as_str), Some("Track 87"));
+
+    #[cfg(feature = "bench-auto")]
+    BOOT_SCENE_MARKER.call_once(|| {
+        log::info!("BENCH_G1_SCENE_BUILT:{FRAMEWORK}:count=256:rows=48");
+    });
 
     div().size_full().flex().flex_col().gap_1().p_4()
         .bg(rgb(0xf1f5fb)).text_color(rgb(0x122333))
