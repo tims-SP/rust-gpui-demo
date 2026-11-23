@@ -261,6 +261,10 @@ jobs:
   android-hermes-scenes-emulator:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      # GitHub Ubuntu VMs lack /dev/kvm. Android Emulator 37+ requires explicit
+      # opt-in to unaccelerated QEMU TCG or exits before ADB sees the device.
+      ANDROID_I_WANT_MY_TCG: 'yes'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -298,7 +302,8 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_5
-          emulator-options: '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim'
+          emulator-boot-timeout: 1200
+          emulator-options: '-no-window -gpu swiftshader_indirect -accel off -no-snapshot -noaudio -no-boot-anim'
           disable-animations: true
           script: bash platforms/mobile/test-android-emulator.sh
       - uses: actions/upload-artifact@v4
