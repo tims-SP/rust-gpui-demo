@@ -1,6 +1,8 @@
 // Official GPUI Web backend rendering imported real Hermes scenes.
 // Native Svelte/Solid HBC execution is verified separately in Chromium.
-use std::{borrow::Cow,cell::RefCell,rc::Rc,time::{Duration,Instant}};
+use std::{borrow::Cow,cell::RefCell,rc::Rc,time::Duration};
+// web-time uses browser Performance.now() on wasm32; std::time::Instant panics.
+use web_time::Instant;
 use gpui::{
   ApplicationHandle,App,Bounds,Context,Window,WindowBounds,WindowOptions,
   div,prelude::*,px,rgb,size,
