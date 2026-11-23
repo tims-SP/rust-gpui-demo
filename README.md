@@ -79,3 +79,7 @@ without that condition, and Solid direct Bun. Each uses Bun 1.4.5. It records
 `process.execPath`, `process.versions`, `execArgv`, mutation counts and
 four repeated native window timings, with screenshots and live tree assertions.
 Results are in `results/ENGINE.md` and `results/ENGINE.json`.
+
+## Confirmed engine/runtime diagnosis
+
+[Runtime verification and development-condition performance isolation](docs/ROOT_CAUSE.md#follow-up-are-different-javascript-engines-responsible) confirms that both applications run Bun 1.4.5/JavaScriptCore; Svelte's CLI adds a `development` export condition, which explains some but not all of the performance gap. Actual data: [Action #45088146436](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45088146436).
