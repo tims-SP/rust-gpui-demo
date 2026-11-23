@@ -2,6 +2,13 @@ name: Hermes native Svelte vs Solid actual custom renderer
 on:
   push:
     branches: [main]
+    paths:
+      - 'apps/**'
+      - 'shared/**'
+      - 'renderers/**'
+      - 'tools/**'
+      - 'package.json'
+      - '.github/workflows/framework-hermes.yml'
   workflow_dispatch:
 permissions:
   contents: read
