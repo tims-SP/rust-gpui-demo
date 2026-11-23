@@ -1,0 +1,129 @@
+name: Static Hermes native AOT vs Bun and Hermes bytecode (JS kernels)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/static-hermes-native.yml'
+      - 'bench/static-hermes/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-aot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+      - name: Install pinned Hermes native compiler dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build build-essential python3 tzdata libreadline-dev \
+            file binutils
+          clang --version
+          bun --version
+      - name: Checkout upstream Static Hermes at immutable commit
+        uses: actions/checkout@v4
+        with:
+          repository: meta/hermes
+          ref: d864d3f09d10e8aebe429715eeed5a4d7edf114d
+          path: .static-hermes-src
+          persist-credentials: false
+      - name: Cache pinned upstream compiled compiler
+        uses: actions/cache@v4
+        with:
+          path: .static-hermes-build
+          key: linux-shermes-release-clang-d864d3f0-v1
+      - name: Build actual Static Hermes shermes native compiler and bytecode VM
+        run: |
+          set -euo pipefail
+          cmake -S .static-hermes-src -B .static-hermes-build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DHERMES_ENABLE_TEST_SUITE=OFF
+          cmake --build .static-hermes-build --target shermes hermes --parallel 2
+          file .static-hermes-build/bin/shermes .static-hermes-build/bin/hermes
+          .static-hermes-build/bin/shermes -help 2>&1 | head -n 20 || true
+          mkdir -p results/static-hermes
+          git -C .static-hermes-src rev-parse HEAD > results/static-hermes/upstream-sha.txt
+      - name: Compile identical source to native ELF and optimized Hermes bytecode
+        run: |
+          set -euo pipefail
+          mkdir -p results/static-hermes
+          src=bench/static-hermes/kernels.js
+          sha256sum "$src" | tee results/static-hermes/source-sha256.txt
+          .static-hermes-build/bin/shermes -O -o results/static-hermes/kernels-native "$src" \
+            2>&1 | tee results/static-hermes/native-compile.log
+          .static-hermes-build/bin/hermes -O -emit-binary \
+            -out results/static-hermes/kernels.hbc "$src" \
+            2>&1 | tee results/static-hermes/bytecode-compile.log
+          test -x results/static-hermes/kernels-native
+          test -s results/static-hermes/kernels.hbc
+          file results/static-hermes/kernels-native results/static-hermes/kernels.hbc \
+            | tee results/static-hermes/verified-artifact-types.txt
+          file results/static-hermes/kernels-native | grep -q 'ELF 64-bit'
+          readelf -h results/static-hermes/kernels-native \
+            | tee results/static-hermes/native-elf-header.txt
+          readelf -S results/static-hermes/kernels-native \
+            | grep -F '.text' | tee results/static-hermes/native-text-section.txt
+          sha256sum results/static-hermes/kernels-native results/static-hermes/kernels.hbc \
+            | tee results/static-hermes/compiled-sha256.txt
+      - name: Execute same workload under three engines (3 process trials)
+        run: |
+          set -euo pipefail
+          for trial in 0 1 2; do
+            if ((trial % 2 == 0)); then
+              engines=(bun-jsc hermes-bytecode static-hermes-native)
+            else
+              engines=(static-hermes-native hermes-bytecode bun-jsc)
+            fi
+            for engine in "${engines[@]}"; do
+              echo "::group::$engine trial=$trial"
+              prefix="results/static-hermes/$engine-$trial"
+              case "$engine" in
+                bun-jsc) cmd=(bun bench/static-hermes/kernels.js);;
+                hermes-bytecode) cmd=(.static-hermes-build/bin/hermes results/static-hermes/kernels.hbc);;
+                static-hermes-native) cmd=(results/static-hermes/kernels-native);;
+              esac
+              /usr/bin/time -f 'wall_seconds=%e\nmax_rss_kib=%M' \
+                -o "$prefix.resources.txt" \
+                timeout 150s "${cmd[@]}" > "$prefix.log" 2>&1
+              cat "$prefix.log"
+              python3 - "$prefix" "$engine" "$trial" <<'PY'
+          import json, sys
+          from pathlib import Path
+          prefix=Path(sys.argv[1])
+          lines=prefix.with_suffix(".log").read_text().splitlines()
+          matches=[x.split("STATIC_HERMES_KERNEL=",1)[1]
+            for x in lines if x.startswith("STATIC_HERMES_KERNEL=")]
+          assert len(matches)==1, f"Missing unique benchmark proof: {prefix}, {lines[-15:]}"
+          data=json.loads(matches[0])
+          data["engine"]=sys.argv[2]
+          data["trial"]=int(sys.argv[3])
+          prefix.with_suffix(".json").write_text(json.dumps(data,indent=2)+"\n")
+          PY
+              echo "::endgroup::"
+            done
+          done
+      - name: Verify same observable outputs and compare native performance
+        run: |
+          python3 bench/static-hermes/compare.py
+          cat results/static-hermes/REPORT.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve compiler logs, ELF proof, original source and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-hermes-native-linux
+          path: |
+            bench/static-hermes/kernels.js
+            results/static-hermes/
+          retention-days: 30
