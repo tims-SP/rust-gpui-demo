@@ -84,3 +84,59 @@ jobs:
           cd .gpui-mobile/example
           cargo check --target aarch64-linux-android
           echo GPUI_ANDROID_BACKEND_COMPILE_PASS
+
+
+  android-gpui-mobile-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Cross-compile ARM64 native GPUI library
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_HOME="$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -d "$ANDROID_NDK_HOME"
+          cargo install cargo-ndk --locked
+          cd .gpui-mobile/example
+          cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs build --lib
+          test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libgpui_mobile_example.so
+          echo GPUI_ANDROID_ARM64_NATIVE_LIBRARY_PASS
+      - name: Package real Android APK with Gradle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd .gpui-mobile/example/android/gradle
+          chmod +x ./gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$apk"
+          python3 - "$apk" <<'PY'
+          import sys, zipfile
+          path=sys.argv[1]
+          with zipfile.ZipFile(path) as z:
+              assert 'AndroidManifest.xml' in z.namelist()
+              assert 'lib/arm64-v8a/libgpui_mobile_example.so' in z.namelist(), 'Native GPUI library missing'
+          print('GPUI_ANDROID_APK_BUILD_PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-mobile-android-arm64-apk
+          path: .gpui-mobile/example/android/gradle/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
