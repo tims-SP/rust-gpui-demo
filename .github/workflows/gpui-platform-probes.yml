@@ -196,7 +196,7 @@ jobs:
           cargo install cargo-ndk --locked
           mkdir -p results/mobile-apk
           for framework in svelte solid; do
-            opts=()
+            opts=(--features bench-auto)
             if [[ "$framework" == solid ]]; then opts+=(--features solid-demo); fi
             (
               cd .gpui-mobile/example
@@ -253,8 +253,10 @@ jobs:
           toolchain: stable
           target: aarch64-apple-ios-sim
           cache: false
-      - name: Prepare Hermes-derived Svelte/Solid mobile scene views
-        run: bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+      - name: Verify Hermes scenes and G1 auto-probe unit tests
+        run: |
+          bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+          python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v
       - name: Install XcodeGen and record simulator environment
         run: |
           xcodebuild -version
@@ -273,6 +275,7 @@ jobs:
             results/ios/*.app.zip
             results/ios/*-simulator.png
             results/ios/*-build.log
+            results/ios/*-g1.json
           retention-days: 14
 
 
@@ -303,9 +306,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Verify Hermès scenes and prepare emulator compatible GPUI mobile view
+      - name: Verify Hermes scenes and G1 auto-probe unit tests
         run: |
           bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+          python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends python3-pil
       - name: Build two independent Android x86_64 AVD APKs
@@ -338,4 +342,5 @@ jobs:
             results/android-emulator/*.png
             results/android-emulator/*.txt
             results/android-emulator/*.apk
+            results/android-emulator/*-g1.json
           retention-days: 14
