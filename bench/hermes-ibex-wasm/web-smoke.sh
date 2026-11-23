@@ -20,7 +20,7 @@ emcmake cmake -S .hermes-source -B .hermes-wasm -G Ninja \
   -DHERMES_ENABLE_TEST_SUITE=OFF -DHERMES_ENABLE_NAPI=OFF \
   -DHAVE_SYS_IOCTL_H=0
 # Compile the JSI host first: missing headers and API errors must not waste the full VM build.
-em++ -std=c++17 -O2 -DNDEBUG -fno-exceptions -fno-rtti \
+em++ -std=c++17 -O2 -DNDEBUG -fexceptions -fno-rtti \
   -I.hermes-source/include -I.hermes-source/public \
   -I.hermes-source/API -I.hermes-source/API/jsi \
   -I.hermes-wasm/lib/config -I.hermes-wasm/include \
@@ -31,7 +31,7 @@ test -s .hermes-wasm/jsi/libjsi.a
 
 # A minimal C++ JSI embedding host; no Hermes CLI main() / exit().
 # It holds the VM while a browser page evaluates native Hermes HBC.
-em++ -std=c++17 -O2 -DNDEBUG -fno-exceptions -fno-rtti \
+em++ -std=c++17 -O2 -DNDEBUG -fexceptions -fno-rtti \
   -I.hermes-source/include -I.hermes-source/public -I.hermes-source/API -I.hermes-source/API/jsi \
   -I.hermes-wasm/lib/config -I.hermes-wasm/include \
   bench/hermes-ibex-wasm/hermes-web-host.cpp \
@@ -42,7 +42,7 @@ em++ -std=c++17 -O2 -DNDEBUG -fno-exceptions -fno-rtti \
   -sEXPORTED_FUNCTIONS=_hermes_run_hbc_file,_malloc,_free \
   -sEXPORTED_RUNTIME_METHODS=FS,ccall \
   -sFORCE_FILESYSTEM=1 -sALLOW_MEMORY_GROWTH=1 \
-  -sSTACK_SIZE=262144 -sASSERTIONS=1
+  -sSTACK_SIZE=262144 -sASSERTIONS=1 -sDISABLE_EXCEPTION_THROWING=0 -sDISABLE_EXCEPTION_CATCHING=0
 test -s results/ibex-hermes-wasm/browser/hermes.js
 test -s results/ibex-hermes-wasm/browser/hermes.wasm
 

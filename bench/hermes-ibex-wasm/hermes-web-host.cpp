@@ -70,6 +70,11 @@ extern "C" int hermes_run_hbc_file(const char *path) {
   observed_checksum = -1;
   auto bytecode = std::make_shared<facebook::jsi::StringBuffer>(std::move(data));
   // Hermes JSI detects and executes matching HBC; it is NOT recompiled by JS.
-  engine->evaluateJavaScript(bytecode, "shared.hbc");
+  try {
+    engine->evaluateJavaScript(bytecode, "shared.hbc");
+  } catch (const std::exception &error) {
+    std::fprintf(stderr, "HERMES_JSI_EVAL_ERROR: %s\n", error.what());
+    return -6;
+  }
   return observed_checksum;
 }
