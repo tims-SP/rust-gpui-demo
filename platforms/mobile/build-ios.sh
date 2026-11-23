@@ -33,12 +33,27 @@ for framework in svelte solid; do
     if [[ "$framework" == "solid" ]]; then
         export GPUI_HERMES_FEATURES="--features solid-demo"
     fi
+    # Xcode checks the absolute .a input before running the upstream prebuild
+    # phase. Build it first and resolve the *actual* Cargo target directory.
+    rust_opts=()
+    if [[ "$framework" == solid ]]; then rust_opts+=(--features solid-demo); fi
+    target_dir="$(cd "$example" && cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys;print(json.load(sys.stdin)["target_directory"])')"
+    (cd "$example" && cargo build --lib --target aarch64-apple-ios-sim "${rust_opts[@]}") \
+        > "$root/results/ios/$framework-rust-build.log" 2>&1 || {
+          tail -100 "$root/results/ios/$framework-rust-build.log"; exit 1;
+        }
+    staticlib="$target_dir/aarch64-apple-ios-sim/debug/libgpui_mobile_example.a"
+    test -s "$staticlib" || {
+       echo "Expected iOS static library missing: $staticlib" >&2; exit 1;
+    }
+    echo "GPUI_IOS_RUST_STATICLIB_PASS:$framework:$staticlib"
     derived="$root/results/ios/DerivedData-$framework"
     log="$root/results/ios/$framework-build.log"
     if ! xcodebuild -project "$example/ios/GpuiExample.xcodeproj" \
         -scheme GpuiExample -configuration Debug \
         -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
         -derivedDataPath "$derived" CODE_SIGNING_ALLOWED=NO \
+        EXAMPLE_STATIC_LIB="$staticlib" \
         build > "$log" 2>&1; then
         tail -100 "$log"
         exit 1
