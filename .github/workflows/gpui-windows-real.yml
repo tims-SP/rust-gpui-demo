@@ -72,7 +72,14 @@ jobs:
               if ($log -notmatch "GPUI_IMPORTED_HERMES_SCENE_OK:$f") {
                 throw "Incorrect Windows Hermes scene"
               }
-              Start-Sleep -Seconds 4
+              $metric = Join-Path $out "$f-metrics.json"
+              for ($frame=0; $frame -lt 22; $frame++) {
+                if ((Test-Path $stdout) -and ((Get-Content $stdout -Raw) -match "GPUI_REPLAY_BENCH_PASS:$f")) { break }
+                if ($proc.HasExited) { break }
+                Start-Sleep -Seconds 1
+              }
+              python tools/extract-gpui-replay.py --log $stdout --framework $f --platform windows --out $metric
+              if ($LASTEXITCODE -ne 0) { throw "Native Windows replay metrics unavailable: $f" }
               $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
               $bmp = New-Object System.Drawing.Bitmap($bounds.Width,$bounds.Height)
               $g = [System.Drawing.Graphics]::FromImage($bmp)
