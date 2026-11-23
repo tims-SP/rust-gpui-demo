@@ -44,8 +44,11 @@ jobs:
           repository: Samsung/escargot
           ref: fb66b79dcb45bea038a18c69b5e6e9b13bc2922e
           path: .escargot-src
-          submodules: recursive
+          submodules: false
           persist-credentials: false
+      - if: matrix.kind == 'escargot'
+        name: Fetch only the required GCutil submodule (skip large test262/ICU/test trees)
+        run: git -C .escargot-src submodule update --init --depth 1 third_party/GCutil
       - name: Compile, independently load, verify checksums and measure RSS
         run: bash bench/embedded/run-linux.sh "${{ matrix.kind }}"
       - name: Archive bytecode, cache proof, per-process JSON, RSS and source
