@@ -110,11 +110,12 @@ fn main(){
                     if idx%15==0 { view.theme=if view.theme=="dark"{"light"}else{"dark"}.to_owned(); }
                     view.rows.rotate_left(1);
                     cx.notify();
-                    // macOS CI's virtual desktop can throttle entity-only redraws.
-                    // Explicitly request the real window frame without claiming GPU present.
-                    #[cfg(target_os = "macos")]
-                    cx.refresh_windows();
                 });
+                // AsyncApp::refresh flushes the queued refresh effect immediately.
+                // Calling Context::refresh_windows inside entity.update can leave the
+                // effect queued while the macOS virtual display loop is parked.
+                #[cfg(target_os = "macos")]
+                async_cx.refresh();
             }
             executor.timer(Duration::from_millis(250)).await;
             let measured=stats.borrow();
