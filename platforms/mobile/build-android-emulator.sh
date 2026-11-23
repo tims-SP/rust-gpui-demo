@@ -26,6 +26,22 @@ needle='abiFilters += listOf("arm64-v8a")'
 if needle not in s: raise SystemExit("Unknown upstream Android ABI filter")
 p.write_text(s.replace(needle,'abiFilters += listOf("x86_64")'))
 PY
+# Maven Central sometimes rate-limits GitHub-hosted runners (HTTP 429).
+# Keep Google's Android repository first, and route Central artifacts through
+# Google's read-only mirror before falling back to repo.maven.apache.org.
+python3 - "$example/android/gradle/settings.gradle.kts" "$example/android/gradle/build.gradle.kts" <<'PYMIRROR'
+from pathlib import Path
+import sys
+mirror='maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }'
+for name in sys.argv[1:]:
+    p=Path(name); s=p.read_text()
+    if mirror in s:
+        continue
+    if 'mavenCentral()' not in s:
+        raise SystemExit(f"Expected Maven Central repository declaration in {p}")
+    p.write_text(s.replace('mavenCentral()', mirror+'\\n        mavenCentral()'))
+    print(f"GPUI_ANDROID_MAVEN_CENTRAL_MIRROR_ENABLED:{p}")
+PYMIRROR
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
 export ANDROID_NDK_HOME="$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
 test -d "$ANDROID_NDK_HOME"
