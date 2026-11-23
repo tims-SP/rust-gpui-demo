@@ -245,7 +245,9 @@ jobs:
           uname -m
           xcrun simctl list devices available
           if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
-      - name: Build two iOS .app bundles and attempt real Simulator screenshots
+      - name: Install iOS scene-specific screenshot verifier
+        run: python3 -m pip install --quiet --user --break-system-packages Pillow
+      - name: Build two iOS .app bundles and verify actual Hermes scene screenshots
         run: bash platforms/mobile/build-ios.sh
       - uses: actions/upload-artifact@v4
         if: always()
@@ -261,10 +263,6 @@ jobs:
   android-hermes-scenes-emulator:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    env:
-      # GitHub Ubuntu VMs lack /dev/kvm. Android Emulator 37+ requires explicit
-      # opt-in to unaccelerated QEMU TCG or exits before ADB sees the device.
-      ANDROID_I_WANT_MY_TCG: 'yes'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
@@ -295,6 +293,14 @@ jobs:
           sudo apt-get install -y --no-install-recommends python3-pil
       - name: Build two independent Android x86_64 AVD APKs
         run: bash platforms/mobile/build-android-emulator.sh
+      - name: Enable KVM on hosted Ubuntu runner
+        shell: bash
+        run: |
+          test -e /dev/kvm || { echo 'ANDROID_KVM_UNAVAILABLE'; exit 1; }
+          sudo chmod 666 /dev/kvm
+          test -w /dev/kvm
+          ls -l /dev/kvm
+          echo ANDROID_KVM_ACCELERATION_AVAILABLE
       - name: Launch both APKs in a real Android Virtual Device and capture pixels
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -303,7 +309,8 @@ jobs:
           arch: x86_64
           profile: pixel_5
           emulator-boot-timeout: 1200
-          emulator-options: '-no-window -gpu swiftshader_indirect -accel off -no-snapshot -noaudio -no-boot-anim'
+          disable-linux-hw-accel: false
+          emulator-options: '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim'
           disable-animations: true
           script: bash platforms/mobile/test-android-emulator.sh
       - uses: actions/upload-artifact@v4
