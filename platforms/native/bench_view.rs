@@ -113,7 +113,7 @@ fn main(){
                 });
             }
             executor.timer(Duration::from_millis(250)).await;
-            let mut measured=stats.borrow_mut();
+            let measured=stats.borrow();
             let mut samples=measured.render_lag_us.clone();
             samples.sort_unstable();
             let result=json!({
