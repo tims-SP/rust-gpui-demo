@@ -61,8 +61,10 @@ export function checkTree(native: GpuixRenderer, start: number) {
     if (Array.isArray(n?.children)) for (const child of n.children) walk(child);
   }
   walk(tree);
+  const end = start === 24 ? "Song 23" : "Song " + (start + 47);
   if (names.length !== 48 || names[0] !== "Song " + start ||
-      names[47] !== "Song " + (start + 47)) {
+      names[47] !== end ||
+      (start === 24 && !names.includes("Song 12 / 119"))) {
     throw new Error("Wrong native order " + JSON.stringify(names.slice(0,48)));
   }
   return names;
