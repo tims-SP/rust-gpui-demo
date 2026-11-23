@@ -1,0 +1,87 @@
+name: Real GPUI Linux windows from Hermes Svelte and Solid scenes
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'platforms/native/**'
+      - '.github/workflows/gpui-native-linux.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  gpui-linux-window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: v1.29.3
+          path: .zed-source
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+      - name: Install GPUI X11, Mesa, fonts, Xvfb and screenshot tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config clang cmake ninja-build \
+            libx11-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libfontconfig1-dev libfreetype6-dev libasound2-dev \
+            libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri \
+            xvfb xauth xdotool imagemagick python3-pil
+      - name: Download actual Hermes framework scene artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45195497003
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - name: Place the scene-driven test inside official Zed GPUI example slot
+        run: |
+          cp platforms/native/bench_view.rs .zed-source/crates/gpui/examples/hello_world.rs
+          test -s results/hermes/svelte.json
+          test -s results/hermes/solid.json
+      - name: Compile official GPUI's native example using actual Hermes scenes
+        working-directory: .zed-source
+        env:
+          CARGO_BUILD_JOBS: '3'
+        run: cargo build -p gpui --example hello_world
+      - name: Open two real GPU windows, screenshot, and verify pixels
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results/gpui-linux
+          Xvfb :99 -screen 0 1440x1000x24 -nolisten tcp > results/gpui-linux/xvfb.log 2>&1 &
+          xpid=$!
+          trap 'kill "$xpid" 2>/dev/null || true' EXIT
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          sleep 3
+          for f in svelte solid; do
+            export HERMES_BENCH_JSON="$GITHUB_WORKSPACE/results/hermes/$f.json"
+            .zed-source/target/debug/examples/hello_world > "results/gpui-linux/$f-runtime.log" 2>&1 &
+            pid=$!
+            for tick in $(seq 1 35); do
+              if grep -q GPUI_WINDOW_CREATED "results/gpui-linux/$f-runtime.log"; then break; fi
+              if ! kill -0 "$pid" 2>/dev/null; then cat "results/gpui-linux/$f-runtime.log"; exit 1; fi
+              sleep 1
+            done
+            grep -q "GPUI_IMPORTED_HERMES_SCENE_OK:$f" "results/gpui-linux/$f-runtime.log"
+            grep -q GPUI_WINDOW_CREATED "results/gpui-linux/$f-runtime.log"
+            sleep 4
+            import -window root "results/gpui-linux/$f.png"
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            python3 platforms/native/verify-image.py "results/gpui-linux/$f.png"
+          done
+          echo GPUI_REAL_LINUX_WINDOW_PASS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-linux-svelte-solid-real-windows
+          path: results/gpui-linux/
+          retention-days: 30
