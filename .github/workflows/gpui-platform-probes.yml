@@ -256,3 +256,57 @@ jobs:
             results/ios/*-simulator.png
             results/ios/*-build.log
           retention-days: 14
+
+
+  android-hermes-scenes-emulator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-linux-android
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify Hermès scenes and prepare emulator compatible GPUI mobile view
+        run: |
+          bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-pil
+      - name: Build two independent Android x86_64 AVD APKs
+        run: bash platforms/mobile/build-android-emulator.sh
+      - name: Launch both APKs in a real Android Virtual Device and capture pixels
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          emulator-options: '-no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim'
+          disable-animations: true
+          script: bash platforms/mobile/test-android-emulator.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator-hermes-svelte-solid-evidence
+          path: |
+            results/android-emulator/*.png
+            results/android-emulator/*.txt
+            results/android-emulator/*.apk
+          retention-days: 14
