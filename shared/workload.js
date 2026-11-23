@@ -30,4 +30,14 @@ export async function runBenchmark(framework,settle){
   const result={framework,initMutations,mutations,measurements,final,scene:snapshot()};
   console.log("BENCH_RESULT:"+JSON.stringify(result));
   console.log("GPUI_SCENE_OK:"+framework);
+  // A second HBC invocation in the SAME persistent Hermes runtime performs
+  // a real registered framework event and emits actual update mutations.
+  globalThis.__gpuiInteractiveClick=async function(){
+    dispatchEvent("event-button");
+    await settle();
+    assertEventClicks(1001);
+    const batch=flush();
+    if(!batch.some(op=>op[0]==="text")) throw Error("click produced no text mutation");
+    console.log("HERMES_INTERACTIVE_RESULT:"+framework+":1001:"+batch.length);
+  };
 }
