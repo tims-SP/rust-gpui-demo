@@ -95,3 +95,7 @@ Results are in `results/ENGINE.md` and `results/ENGINE.json`.
 ## Function-level root cause (verified)
 
 [CPU samples, scoped CSS rule-cache misses, and deep-proxy list experiment](docs/HOTPATH_FINDINGS.md). In four warmed Linux native runs, switching an app-wide CSS token from scoped to global improved Svelte theme updates by 55.4%; raw order arrays and indexed window construction improved keyed rotation by 41.1% and window movement by 18.5%.
+
+## List proxy versus slice 2×2 ablation
+
+[Run the dedicated Linux factorial experiment](https://github.com/tims-SP/rust-gpui-demo/actions/workflows/list-factorial.yml). Four pre-warmed variants isolate `$state.raw(order)` versus index-based window construction without changing styles or native mutations. Results are in the `LIST_FACTORIAL.md` Actions artifact and must pass Rust live tree/order and X11 screenshot checks.

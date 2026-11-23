@@ -8,11 +8,15 @@ import InlineApp from "./SvelteInline.svelte";
 import StaticApp from "./SvelteStatic.svelte";
 import GlobalThemeApp from "./SvelteGlobalTheme.svelte";
 import RawListApp from "./SvelteRawList.svelte";
+import RawOrderApp from "./SvelteRawOrder.svelte";
+import IndexedWindowApp from "./SvelteIndexedWindow.svelte";
 const staticStyle = process.env.SVELTE_STYLE_MODE === "static";
 const SelectedApp = staticStyle ? StaticApp :
   process.env.SVELTE_STYLE_MODE === "inline" ? InlineApp :
   process.env.SVELTE_STYLE_MODE === "global" ? GlobalThemeApp :
-  process.env.SVELTE_STYLE_MODE === "raw" ? RawListApp : App;
+  process.env.SVELTE_STYLE_MODE === "raw" ? RawListApp :
+  process.env.SVELTE_STYLE_MODE === "raw-order" ? RawOrderApp :
+  process.env.SVELTE_STYLE_MODE === "indexed-window" ? IndexedWindowApp : App;
 import type { GpuixRenderer } from "@gpuix/native";
 
 instrumentNative();
