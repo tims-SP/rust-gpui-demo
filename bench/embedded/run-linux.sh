@@ -8,7 +8,8 @@ if [[ "$kind" == primjs ]]; then
   git -C .primjs-src rev-parse HEAD > "$root/upstream-sha.txt"
   python3 bench/embedded/patch_primjs.py
   cmake -S .primjs-src -B .primjs-build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release -DENABLE_UNITTESTS=ON -DENABLE_PRIMJS_SNAPSHOT=OFF
+    -DCMAKE_BUILD_TYPE=Release -DENABLE_UNITTESTS=ON -DENABLE_PRIMJS_SNAPSHOT=OFF \
+    -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
   cmake --build .primjs-build --target qjs --parallel 2
   test -x .primjs-build/qjs
   cp bench/static-hermes/kernels.js "$root/compiler-input.js"
