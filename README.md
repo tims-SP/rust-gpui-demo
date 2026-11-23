@@ -87,3 +87,7 @@ Results are in `results/ENGINE.md` and `results/ENGINE.json`.
 ## CPU profiling of real JS update paths
 
 `hotpath-profile.yml` uses Bun's JavaScriptCore `bun:jsc.profile()` to collect CPU samples **only during warmed update loops** on the Linux GPUIX native window. It profiles single-row state changes, theme updates, keyed list rotations and visible-window shifts in both frameworks. Profiles and actual screenshots are uploaded as a workflow artifact. The tracer is active only when `HOTPATH_PROFILE=1` and is not used in the standard benchmark.
+
+## Isolated Svelte bottleneck experiments
+
+`cache-proxy-isolation.yml` measures the original scoped `style:--accent` CSS theme against a global `set_css_vars()` theme that can hit `rule_style()`'s generation cache. It also compares the original deep-proxied order and `tracks.slice()` window path against `$state.raw(order)` with indexed row construction. All variants use the same native Linux GPUIX runner and verify row order, mutation counts and X11 screenshots. See `results/CACHE_PROXY.md` after CI.

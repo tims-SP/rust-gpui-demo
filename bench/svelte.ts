@@ -6,9 +6,13 @@ import { collectHotpathProfiles } from "./hotpath.ts";
 import App from "./SvelteApp.svelte";
 import InlineApp from "./SvelteInline.svelte";
 import StaticApp from "./SvelteStatic.svelte";
+import GlobalThemeApp from "./SvelteGlobalTheme.svelte";
+import RawListApp from "./SvelteRawList.svelte";
 const staticStyle = process.env.SVELTE_STYLE_MODE === "static";
 const SelectedApp = staticStyle ? StaticApp :
-  process.env.SVELTE_STYLE_MODE === "inline" ? InlineApp : App;
+  process.env.SVELTE_STYLE_MODE === "inline" ? InlineApp :
+  process.env.SVELTE_STYLE_MODE === "global" ? GlobalThemeApp :
+  process.env.SVELTE_STYLE_MODE === "raw" ? RawListApp : App;
 import type { GpuixRenderer } from "@gpuix/native";
 
 instrumentNative();
@@ -73,6 +77,12 @@ try {
     } finally { activeTrace = null; }
   };
   await Bun.sleep(700);
+  if (process.env.THEME_ISOLATION === "1") {
+    for (let i = 0; i < 512; i++) { app.changeTheme(i % 2 ? "#8b5cf6" : "#ff6699"); settle(); }
+    for (let i = 0; i < 192; i++) { app.rotate(); settle(); }
+    for (let i = 0; i < 240; i++) { app.shiftWindow((i % 120) + 1); settle(); }
+    app.shiftWindow(0); settle();
+  }
   collectHotpathProfiles("svelte", [
     { name: "single", iterations: 4800,
       run: i => { app.updateTitle(12, "Song 12 / " + i); settle(); } },

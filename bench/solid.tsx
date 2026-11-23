@@ -49,6 +49,12 @@ try {
   const root = render(() => <App />, { title: "Solid / GPUI Linux comparison", width: 680, height: 900 });
   if (!native) throw new Error("Solid root did not bind a real native renderer");
   await Bun.sleep(700);
+  if (process.env.THEME_ISOLATION === "1") {
+    for (let i = 0; i < 512; i++) { setAccent(i % 2 ? "#8b5cf6" : "#ff6699"); root.flushSync(() => {}); }
+    for (let i = 0; i < 192; i++) { setOrder(rows => [...rows.slice(1), rows[0]!]); root.flushSync(() => {}); }
+    for (let i = 0; i < 240; i++) { setWindowStart((i % 120) + 1); root.flushSync(() => {}); }
+    setWindowStart(0); root.flushSync(() => {});
+  }
   collectHotpathProfiles("solid", [
     { name: "single", iterations: 4800,
       run: i => { setTracks(12, "title", "Song 12 / " + i); root.flushSync(() => {}); } },
