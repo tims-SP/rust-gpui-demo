@@ -1,0 +1,83 @@
+
+name: Real macOS GPUI Hermes Svelte Solid windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gpui-macos-real.yml'
+      - 'platforms/native/verify-macos-image.py'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  macos-real-window:
+    runs-on: macos-15
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: zed-industries/zed
+          ref: v1.29.3
+          path: .zed-source
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          cache: false
+      - name: Install actual Hermes-scene GPUI view and verify source JSON
+        run: |
+          cp platforms/native/bench_view.rs .zed-source/crates/gpui/examples/hello_world.rs
+          test -s results/hermes/svelte.json
+          test -s results/hermes/solid.json
+          uname -m
+          xcodebuild -version
+      - name: Compile official GPUI native executable
+        working-directory: .zed-source
+        env:
+          CARGO_BUILD_JOBS: '3'
+        run: cargo build -p gpui --example hello_world
+      - name: Install PNG pixel inspection
+        run: python3 -m pip install --user --break-system-packages --quiet Pillow
+      - name: Actually open macOS windows, capture desktop, verify rendered pixels
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results/macos-gpui
+          exe="$GITHUB_WORKSPACE/.zed-source/target/debug/examples/hello_world"
+          test -x "$exe"
+          for f in svelte solid; do
+            export HERMES_BENCH_JSON="$GITHUB_WORKSPACE/results/hermes/$f.json"
+            "$exe" > "results/macos-gpui/$f-runtime.log" 2>&1 &
+            pid=$!
+            trap 'kill "$pid" 2>/dev/null || true' EXIT
+            ready=false
+            for i in $(seq 1 35); do
+              if grep -q GPUI_WINDOW_CREATED "results/macos-gpui/$f-runtime.log"; then ready=true; break; fi
+              if ! kill -0 "$pid" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            cat "results/macos-gpui/$f-runtime.log"
+            [[ "$ready" == true ]] || { echo "GPUI macOS failed to open window for $f"; exit 1; }
+            grep -q "GPUI_IMPORTED_HERMES_SCENE_OK:$f" "results/macos-gpui/$f-runtime.log"
+            sleep 5
+            screencapture -x "results/macos-gpui/$f.png"
+            python3 platforms/native/verify-macos-image.py "results/macos-gpui/$f.png"
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            trap - EXIT
+          done
+          echo GPUI_MACOS_TWO_REAL_WINDOWS_PASS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-macos-svelte-solid-real-window-evidence
+          path: results/macos-gpui/
+          retention-days: 14
