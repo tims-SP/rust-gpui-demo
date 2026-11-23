@@ -3,7 +3,7 @@ export default function App(){
  const [count,setCount]=createSignal(0);
  const [start,setStart]=createSignal(0);
  const [theme,setTheme]=createSignal("light");
- const rows=createMemo(()=>Array.from({length:48},(_,i)=>({id:start()+i,title:"Track "+(start()+i)})));
+ const rows=createMemo(()=>Array.from({length:48},(_,i)=>start()+i));
  globalThis.__gpuiDrive=(op,value)=>{
    if(op==="counter")setCount(value);
    else if(op==="window")setStart(value);
@@ -12,6 +12,6 @@ export default function App(){
  };
  return <panel id="app" theme={theme()}>
    <label id="counter">Count: {count()}</label>
-   <list id="tracks"><For each={rows()}>{item=><row id={"track-"+item.id}>{item.title}</row>}</For></list>
+   <list id="tracks"><For each={rows()}>{id=><row id={"track-"+id}>{"Track "+id}</row>}</For></list>
  </panel>;
 }
