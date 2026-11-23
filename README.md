@@ -103,3 +103,9 @@ Results are in `results/ENGINE.md` and `results/ENGINE.json`.
 ## Confirmed causes after warmed factorial and JSC profiling
 
 [The verified, factor-isolated bottleneck findings](docs/HOTPATH_FINDINGS.md#follow-up-separate-proxy-slice-and-remaining-warmed-cpu-work) now separate `$state.raw` order arrays from deep-reactive `slice()`, compare 20 real Linux native runs, and profile remaining Svelte Core / GPUI Shadow Tree self-samples in six additional verified processes. Artifacts and correction history are linked in the report.
+
+## Hermes vs Bun/JavaScriptCore — Linux native engine benchmark
+
+[Full verified engine comparison](docs/HERMES_ENGINE.md#final-linux-native-benchmark--pass) · [Successful 24-run GitHub Actions](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45094761850) · [Raw screenshots and results](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45094761850/artifacts/14782079120).
+
+The **same CJS binaries** for each Svelte/Solid app run on both engines through an unchanged GPUIX Node-API addon. Hermes v0.0.2 runs correctly on Linux, including its precompiled bytecode mode, but is slower than Bun/JSC on most repeated styling and list updates. Existing Bun/GPUIX support remains the default. No fork needed for the Linux proof of concept.
