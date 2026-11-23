@@ -19,6 +19,12 @@ emcmake cmake -S .hermes-source -B .hermes-wasm -G Ninja \
   -DIMPORT_HOST_COMPILERS="$(pwd)/.hermes-host/ImportHostCompilers.cmake" \
   -DHERMES_ENABLE_TEST_SUITE=OFF -DHERMES_ENABLE_NAPI=OFF \
   -DHAVE_SYS_IOCTL_H=0
+# Compile the JSI host first: missing headers and API errors must not waste the full VM build.
+em++ -std=c++17 -O2 -DNDEBUG -fno-exceptions -fno-rtti \
+  -I.hermes-source/include -I.hermes-source/public \
+  -I.hermes-source/API -I.hermes-source/API/jsi \
+  -I.hermes-wasm/lib/config -I.hermes-wasm/include \
+  -fsyntax-only bench/hermes-ibex-wasm/hermes-web-host.cpp
 cmake --build .hermes-wasm --target hermesvm_a jsi --parallel 2
 test -s .hermes-wasm/lib/libhermesvm_a.a
 test -s .hermes-wasm/jsi/libjsi.a
@@ -26,7 +32,7 @@ test -s .hermes-wasm/jsi/libjsi.a
 # A minimal C++ JSI embedding host; no Hermes CLI main() / exit().
 # It holds the VM while a browser page evaluates native Hermes HBC.
 em++ -std=c++17 -O2 -DNDEBUG -fno-exceptions -fno-rtti \
-  -I.hermes-source/include -I.hermes-source/API -I.hermes-source/API/jsi \
+  -I.hermes-source/include -I.hermes-source/public -I.hermes-source/API -I.hermes-source/API/jsi \
   -I.hermes-wasm/lib/config -I.hermes-wasm/include \
   bench/hermes-ibex-wasm/hermes-web-host.cpp \
   .hermes-wasm/lib/libhermesvm_a.a .hermes-wasm/jsi/libjsi.a \
