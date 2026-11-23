@@ -7,9 +7,11 @@ lscpu > results/perf/lscpu.txt
 ibex=".ibex-source/target/release/ibex2"
 test -x "$ibex"
 for f in svelte solid; do
-  "$ibex" build "dist/$f.js" --root . > "results/perf/$f-build.log" 2>&1
-  # Initial process warmup does not count toward the seven measured samples.
-  "$ibex" run "dist/$f.js" --root . --precompiled > "results/perf/$f-warmup.log" 2>&1
+  mkdir -p "results/perf/work/$f"
+  cp "dist/$f.js" "results/perf/work/$f/app.js"
+  "$ibex" build "results/perf/work/$f/app.js" --root "results/perf/work/$f" > "results/perf/$f-build.log" 2>&1
+  # Independent module manifests prevent one framework overwriting the other.
+  "$ibex" run "results/perf/work/$f/app.js" --root "results/perf/work/$f" --precompiled > "results/perf/$f-warmup.log" 2>&1
   grep -q "GPUI_SCENE_OK:$f" "results/perf/$f-warmup.log"
 done
 for i in $(seq 1 7); do
@@ -18,7 +20,7 @@ for i in $(seq 1 7); do
     logfile="results/perf/$i-$f.log"
     /usr/bin/time -f 'PROCESS_SECONDS=%e\nPEAK_RSS_KIB=%M' \
       -o "results/perf/$i-$f.time" \
-      "$ibex" run "dist/$f.js" --root . --precompiled > "$logfile" 2>&1
+      "$ibex" run "results/perf/work/$f/app.js" --root "results/perf/work/$f" --precompiled > "$logfile" 2>&1
     grep -q '^BENCH_RESULT:' "$logfile"
     grep -q "GPUI_SCENE_OK:$f" "$logfile"
   done
