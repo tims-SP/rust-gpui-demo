@@ -1,0 +1,71 @@
+name: Hermes native Svelte vs Solid actual custom renderer
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  framework-node-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-audit --no-fund
+      - run: npm run ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: control-node-renderer-artifacts
+          path: |
+            dist/
+            results/
+            package-lock.json
+          retention-days: 30
+  real-ibex2-hermes:
+    needs: framework-node-control
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: expo/ibex
+          ref: 24cd0ae8cdd20106bed04cd3a4a2378d1dd81995
+          path: .ibex-source
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.97.0'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install upstream Hermes build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y clang cmake ninja-build libicu-dev pkg-config
+      - run: npm install --no-audit --no-fund && npm run build
+      - name: Build actual Ibex2 Rust Hermes executable
+        env:
+          RUSTFLAGS: '-A mismatched-lifetime-syntaxes'
+        run: cargo build --manifest-path .ibex-source/Cargo.toml --locked --release -p ibex2-runtime --bin ibex2
+      - name: Compile and execute Svelte/Solid bundles through real Hermes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p results/hermes
+          for f in svelte solid; do
+            .ibex-source/target/release/ibex2 build "dist/$f.js" --root . > "results/hermes/$f-build.log" 2>&1
+            .ibex-source/target/release/ibex2 run "dist/$f.js" --root . --precompiled > "results/hermes/$f-run.log" 2>&1
+            grep -q "GPUI_SCENE_OK:$f" "results/hermes/$f-run.log"
+            grep -q '^BENCH_RESULT:' "results/hermes/$f-run.log"
+            echo "HERMES_FRAMEWORK_PASS:$f"
+          done
+          python3 tools/verify-hermes.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          path: results/hermes/
+          retention-days: 30
