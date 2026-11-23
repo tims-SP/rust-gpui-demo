@@ -1,4 +1,4 @@
-name: Six-engine JS kernels - Static Hermes vs V8, SpiderMonkey, QuickJS, JSC
+name: 8-mode JS kernel benchmark - QuickJS-NG bytecode and Static Hermes
 
 on:
   push:
@@ -37,6 +37,37 @@ jobs:
           test -x "$(command -v js115)"
           test -x "$(command -v qjs)"
           dpkg-query -W quickjs libmozjs-115-dev | tee results-engine-packages.txt
+      - name: Checkout pinned QuickJS-NG
+        uses: actions/checkout@v4
+        with:
+          repository: quickjs-ng/quickjs
+          ref: 133cafb95a969fcb09dc2e020e9ec72d3c7a3140
+          path: .quickjs-ng-src
+          persist-credentials: false
+      - name: Build QuickJS-NG and prove precompiled bytecode executable
+        run: |
+          set -euo pipefail
+          mkdir -p results/static-hermes
+          cmake -S .quickjs-ng-src -B .quickjs-ng-build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build .quickjs-ng-build --target qjs qjsc --parallel 2
+          qjs="$(pwd)/.quickjs-ng-build/qjs"
+          qjsc="$(pwd)/.quickjs-ng-build/qjsc"
+          test -x "$qjs" && test -x "$qjsc"
+          "$qjsc" -b -o results/static-hermes/quickjs-ng-raw.qbc bench/static-hermes/kernels.js
+          "$qjs" -c bench/static-hermes/kernels.js -o results/static-hermes/quickjs-ng-bytecode --exe "$qjs"
+          test -s results/static-hermes/quickjs-ng-raw.qbc
+          test -x results/static-hermes/quickjs-ng-bytecode
+          file "$qjs" results/static-hermes/quickjs-ng-bytecode results/static-hermes/quickjs-ng-raw.qbc
+          python3 - <<'PY'
+          from pathlib import Path
+          exe=Path("results/static-hermes/quickjs-ng-bytecode").read_bytes()
+          base=Path(".quickjs-ng-build/qjs").read_bytes()
+          assert len(exe) > len(base), "bytecode was not appended"
+          assert b"quickjs2" in exe[-16:], "QuickJS-NG bytecode trailer missing"
+          print(f"QuickJS-NG verified: base={len(base)} bytecode_exe={len(exe)} suffix={exe[-16:].hex()}")
+          PY
+          sha256sum .quickjs-ng-build/qjs results/static-hermes/quickjs-ng-*
+          git -C .quickjs-ng-src rev-parse HEAD > results/static-hermes/quickjs-ng-upstream-sha.txt
       - name: Checkout upstream Static Hermes at immutable commit
         uses: actions/checkout@v4
         with:
@@ -88,14 +119,14 @@ jobs:
             | grep -F '.text' | tee results/static-hermes/native-text-section.txt
           sha256sum results/static-hermes/kernels-native results/static-hermes/kernels.hbc \
             | tee results/static-hermes/compiled-sha256.txt
-      - name: Execute identical JS source under six engine modes (3 independent processes each)
+      - name: Execute JS on eight engine modes incl QuickJS-NG precompiled bytecode (3 trials)
         run: |
           set -euo pipefail
           for trial in 0 1 2; do
             if ((trial % 2 == 0)); then
-              engines=(bun-jsc node-v8 spidermonkey-115 quickjs-2021 hermes-bytecode static-hermes-native)
+              engines=(bun-jsc node-v8 spidermonkey-115 quickjs-2021 quickjs-ng-source quickjs-ng-bytecode hermes-bytecode static-hermes-native)
             else
-              engines=(static-hermes-native hermes-bytecode quickjs-2021 spidermonkey-115 node-v8 bun-jsc)
+              engines=(static-hermes-native hermes-bytecode quickjs-ng-bytecode quickjs-ng-source quickjs-2021 spidermonkey-115 node-v8 bun-jsc)
             fi
             for engine in "${engines[@]}"; do
               echo "::group::$engine trial=$trial"
@@ -105,6 +136,8 @@ jobs:
                 node-v8) cmd=(node bench/static-hermes/kernels.js);;
                 spidermonkey-115) cmd=(js115 bench/static-hermes/kernels.js);;
                 quickjs-2021) cmd=(qjs bench/static-hermes/kernels.js);;
+                quickjs-ng-source) cmd=(.quickjs-ng-build/qjs bench/static-hermes/kernels.js);;
+                quickjs-ng-bytecode) cmd=(results/static-hermes/quickjs-ng-bytecode);;
                 hermes-bytecode) cmd=(.static-hermes-build/bin/hermes results/static-hermes/kernels.hbc);;
                 static-hermes-native) cmd=(results/static-hermes/kernels-native);;
               esac

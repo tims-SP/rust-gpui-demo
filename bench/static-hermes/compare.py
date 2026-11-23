@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate identical JS semantics and report six-engine performance on Linux."""
+"""Validate identical JS semantics and report eight engine modes incl precompiled QuickJS-NG."""
 import json
 from pathlib import Path
 from statistics import median
@@ -10,6 +10,8 @@ ENGINES = (
     "node-v8",
     "spidermonkey-115",
     "quickjs-2021",
+    "quickjs-ng-source",
+    "quickjs-ng-bytecode",
     "hermes-bytecode",
     "static-hermes-native",
 )
@@ -58,16 +60,17 @@ for scenario in SCENARIOS:
     }
 
 rows = [
-    "# Six-engine Linux x86-64 JavaScript kernel comparison", "",
-    "All 18 independent processes successfully executed the same unmodified JS source.",
+    "# Eight-mode Linux x86-64 JavaScript kernel comparison", "",
+    "All 24 independent processes successfully executed the same JS workload.",
     "Each process uses two untimed warm-up invocations per kernel; all output checksums match.",
     "Bun 1.4.5 uses JavaScriptCore; Node 24.22.2 uses V8; Ubuntu 24.04 packages",
-    "provide SpiderMonkey 115 and QuickJS 2021. Hermes bytecode and native AOT are",
+    "provide SpiderMonkey 115 and QuickJS 2021. QuickJS-NG has source and verified",
+    "precompiled bytecode modes; Hermes bytecode and native AOT are",
     "built from the same pinned upstream source commit (shermes produces ELF machine code).",
     "Measurements use in-JS Date.now() millisecond resolution and three-process medians.",
     "Older SpiderMonkey and QuickJS versions are reference points, not current-engine rankings.",
     "No actual GPUIX native UI, Rust FFI, or GPU frames are included.", "",
-    "| Kernel (lower is better) | Bun / JSC | Node / V8 | SpiderMonkey 115 | QuickJS 2021 | Hermes bytecode | Static Hermes native | Native / Node | Native / Bun |",
+    "| Kernel (lower is better) | Bun / JSC | Node / V8 | SpiderMonkey 115 | QuickJS 2021 | QuickJS-NG source | QuickJS-NG bytecode | Hermes bytecode | Static Hermes native | Native / Node | Native / Bun |",
     "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
 ]
 for scenario, x in medians.items():
