@@ -4,10 +4,27 @@ on:
     branches: [main]
     paths: ['.github/workflows/gpui-platform-probes.yml']
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Run only the mobile test being debugged, or all platform probes
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - android-avd
+          - ios-simulator
+      reuse_android_apks_run_id:
+        description: Optional previous Android run ID to replay exact APKs without rebuilding
+        required: false
+        type: string
+        default: ''
 permissions:
   contents: read
+  actions: read
 jobs:
   desktop-gpui-compile:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +59,7 @@ jobs:
         shell: bash
         run: echo "GPUI_DESKTOP_COMPILE_PASS:${{ matrix.label }}"
   ios-gpui-compile:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -61,6 +79,7 @@ jobs:
           cargo check -p gpui_ios --target aarch64-apple-ios-sim
           echo GPUI_IOS_BACKEND_COMPILE_PASS
   android-gpui-mobile-compile:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -87,6 +106,7 @@ jobs:
 
 
   android-gpui-mobile-apk:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -139,4 +159,211 @@ jobs:
         with:
           name: gpui-mobile-android-arm64-apk
           path: .gpui-mobile/example/android/gradle/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+
+  android-two-hermes-scenes-apk:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify Hermes scenes and adapt shared mobile view
+        shell: bash
+        run: bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+      - name: Build Svelte and Solid parity APKs with native GPUI Mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_HOME="$(find "$ANDROID_SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          test -d "$ANDROID_NDK_HOME"
+          cargo install cargo-ndk --locked
+          mkdir -p results/mobile-apk
+          for framework in svelte solid; do
+            opts=(--features bench-auto)
+            if [[ "$framework" == solid ]]; then opts+=(--features solid-demo); fi
+            (
+              cd .gpui-mobile/example
+              cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs build --lib "${opts[@]}"
+              test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libgpui_mobile_example.so
+              cd android/gradle
+              chmod +x ./gradlew
+              ./gradlew :app:assembleDebug --no-daemon
+            )
+            cp .gpui-mobile/example/android/gradle/app/build/outputs/apk/debug/app-debug.apk "results/mobile-apk/$framework.apk"
+            python3 - "results/mobile-apk/$framework.apk" <<'PY'
+          from pathlib import Path
+          import sys,zipfile
+          apk=Path(sys.argv[1])
+          with zipfile.ZipFile(apk) as z:
+              assert 'AndroidManifest.xml' in z.namelist()
+              assert 'lib/arm64-v8a/libgpui_mobile_example.so' in z.namelist()
+              assert z.getinfo('lib/arm64-v8a/libgpui_mobile_example.so').file_size > 100000
+          print("GPUI_MOBILE_HERMES_SCENE_APK_BUILD_PASS:"+apk.stem)
+          PY
+          done
+          test "$(sha256sum results/mobile-apk/svelte.apk | cut -d' ' -f1)" != "$(sha256sum results/mobile-apk/solid.apk | cut -d' ' -f1)"
+          echo GPUI_MOBILE_TWO_DISTINCT_APKS_BUILT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-mobile-hermes-svelte-solid-arm64-apks
+          path: results/mobile-apk/*.apk
+          retention-days: 14
+
+
+  ios-two-hermes-scenes-simulator:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all' || inputs.scope == 'ios-simulator'
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios-sim
+          cache: false
+      - name: Install iOS scene-specific screenshot verifier
+        run: python3 -m pip install --quiet --user --break-system-packages Pillow
+      - name: Verify Hermes scenes and G1 auto-probe unit tests
+        run: |
+          bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+          python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v
+      - name: Install XcodeGen and record simulator environment
+        run: |
+          xcodebuild -version
+          uname -m
+          xcrun simctl list devices available
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+      - name: Build two iOS .app bundles and verify actual Hermes scene screenshots
+        run: bash platforms/mobile/build-ios.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-mobile-hermes-svelte-solid-ios-simulator
+          path: |
+            results/ios/*.app.zip
+            results/ios/*-simulator.png
+            results/ios/*-build.log
+            results/ios/*-g1.json
+          retention-days: 14
+
+
+  android-hermes-scenes-emulator:
+    if: github.event_name != 'workflow_dispatch' || inputs.scope == 'all' || inputs.scope == 'android-avd'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: real-ibex2-hermes-framework-benchmarks
+          run-id: 45199793980
+          github-token: ${{ github.token }}
+          path: results/hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-linux-android
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify Hermes scenes and G1 auto-probe unit tests
+        run: |
+          bash platforms/mobile/prepare-upstream.sh .gpui-mobile results/hermes
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends python3-pil
+          python3 -m unittest discover -s platforms/mobile/tests -p 'test_*.py' -v
+      - name: Build two independent Android x86_64 AVD APKs
+        if: github.event_name != 'workflow_dispatch' || inputs.reuse_android_apks_run_id == ''
+        run: bash platforms/mobile/build-android-emulator.sh
+      - name: Reuse identical emulator APKs from a prior run (renderer code unchanged)
+        if: github.event_name == 'workflow_dispatch' && inputs.reuse_android_apks_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: android-emulator-hermes-svelte-solid-evidence
+          run-id: ${{ inputs.reuse_android_apks_run_id }}
+          github-token: ${{ github.token }}
+          path: results/android-emulator
+      - name: Verify replayed APKs and print their SHA256
+        if: github.event_name == 'workflow_dispatch' && inputs.reuse_android_apks_run_id != ''
+        run: |
+          test -s results/android-emulator/svelte.apk
+          test -s results/android-emulator/solid.apk
+          sha256sum results/android-emulator/{svelte,solid}.apk
+          echo "GPUI_ANDROID_REUSED_APK_SOURCE_RUN=${{ inputs.reuse_android_apks_run_id }}"
+      - name: Enable KVM on hosted Ubuntu runner
+        shell: bash
+        run: |
+          test -e /dev/kvm || { echo 'ANDROID_KVM_UNAVAILABLE'; exit 1; }
+          sudo chmod 666 /dev/kvm
+          test -w /dev/kvm
+          ls -l /dev/kvm
+          echo ANDROID_KVM_ACCELERATION_AVAILABLE
+      - name: Launch both APKs in a real Android Virtual Device and capture pixels
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_5
+          emulator-boot-timeout: 600
+          disable-linux-hw-accel: false
+          # GPUI 0.3.6 GLES fallback acceptance: isolate SwiftShader Vulkan.
+          emulator-options: '-no-window -gpu swiftshader -feature -Vulkan -no-snapshot -noaudio -no-boot-anim'
+          disable-animations: true
+          script: bash platforms/mobile/test-android-emulator.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-emulator-hermes-svelte-solid-evidence
+          path: |
+            results/android-emulator/*.png
+            results/android-emulator/*.txt
+            results/android-emulator/*.apk
+            results/android-emulator/*-g1.json
           retention-days: 14
