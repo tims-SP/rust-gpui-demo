@@ -1,6 +1,6 @@
 {
   "schema": "six-platform-benchmark/v1",
-  "generated_at_utc": "2026-11-23T23:07:26.950801Z",
+  "generated_at_utc": "2026-11-23T23:46:41.384Z",
   "repo": "tims-SP/rust-gpui-demo",
   "cells": [
     {
@@ -186,15 +186,15 @@
     {
       "platform": "android",
       "framework": "svelte",
-      "ci_run_id": 45283713120,
-      "ci_sha": "7d416c7827f3fd7c7729839bf3749660c00019fd",
+      "ci_run_id": 45289742513,
+      "ci_sha": "ebecd3d8a3abdf688d34d0df10e8e25571d2893f",
       "gpui_render_verified": true,
       "metric_status": "NOT_MEASURED",
       "gpui_replay_p50_us": null,
       "gpui_replay_p95_us": null,
       "gpui_replay_p99_us": null,
-      "g1_screenshot_readiness_ms": 7402,
-      "g1_screenshot_attempts": 2,
+      "g1_screenshot_readiness_ms": 12031,
+      "g1_screenshot_attempts": 3,
       "scene_source": "precomputed-Hermes-JSON",
       "hermes_running_in_same_gpui_app": false,
       "live_jsi_to_gpui": false,
@@ -204,15 +204,15 @@
     {
       "platform": "android",
       "framework": "solid",
-      "ci_run_id": 45283713120,
-      "ci_sha": "7d416c7827f3fd7c7729839bf3749660c00019fd",
+      "ci_run_id": 45289742513,
+      "ci_sha": "ebecd3d8a3abdf688d34d0df10e8e25571d2893f",
       "gpui_render_verified": true,
       "metric_status": "NOT_MEASURED",
       "gpui_replay_p50_us": null,
       "gpui_replay_p95_us": null,
       "gpui_replay_p99_us": null,
-      "g1_screenshot_readiness_ms": 7140,
-      "g1_screenshot_attempts": 2,
+      "g1_screenshot_readiness_ms": 12059,
+      "g1_screenshot_attempts": 3,
       "scene_source": "precomputed-Hermes-JSON",
       "hermes_running_in_same_gpui_app": false,
       "live_jsi_to_gpui": false,
@@ -257,8 +257,12 @@
       "artifact": "gpui-mobile-hermes-svelte-solid-ios-simulator"
     },
     "android": {
-      "run_id": null,
-      "error": "45242919984: no artifact matches any of the names or patterns provided; 45208784743: no artifact matches any of the names or patterns provided; 45206809147: no valid artifacts found to download"
+      "run_id": 45289742513,
+      "sha": "ebecd3d8a3abdf688d34d0df10e8e25571d2893f",
+      "branch": "fix/android-maven-central-mirror",
+      "created_at": "2026-11-23T23:38:??Z",
+      "artifact": "android-emulator-hermes-svelte-solid-evidence",
+      "evidence_note": "Both G1 screenshots verified; Maven Central mirror build and AVD render pass. Not a PR #5 head commit; equivalent patch cherry-picked to feature/mobile-scene-parity and revalidation is running."
     }
   },
   "complete": false
