@@ -1,0 +1,104 @@
+name: Linux GPUIX same-bundle Hermes vs Bun/JSC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hermes-compare.yml'
+      - 'bench/engines/**'
+      - 'scripts/run-hermes-case.sh'
+      - 'bench/compare_engines.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      XDG_SESSION_TYPE: x11
+      WINIT_UNIX_BACKEND: x11
+      LIBGL_ALWAYS_SOFTWARE: "1"
+      VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.5"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install Linux Native and X11 dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth imagemagick mesa-vulkan-drivers vulkan-tools \
+            libx11-xcb1 libxkbcommon-x11-0 libxkbcommon0 libwayland-client0 \
+            libfontconfig1 libvulkan1 fonts-noto-cjk libasound2t64 libssl3
+          mkdir -p results dist/engines
+      - name: Install Hermes Node v0.0.2, verify sha256 before execution
+        run: |
+          set -euo pipefail
+          url="https://github.com/tmikov/hermes-node/releases/download/v0.0.2/hermes-node-0.0.2-linux-x64.tar.gz"
+          curl -fLSs --retry 3 "$url" -o hermes-node.tar.gz
+          echo "56403274e5c5f24a58e84e15624bce473af1ab00d3bf60efc3f64a574614a4f7  hermes-node.tar.gz" | sha256sum -c -
+          mkdir -p .tools/hermes
+          tar xzf hermes-node.tar.gz -C .tools/hermes
+          executable="$(find "$PWD/.tools/hermes" -type f -name hermes-node | head -n 1)"
+          test -n "$executable"
+          chmod +x "$executable"
+          echo "HERMES_NODE=$executable" >> "$GITHUB_ENV"
+          "$executable" --version
+          "$executable" -e 'console.log("HERMES_SMOKE",process.execPath,process.versions)'
+      - name: Install app packages
+        run: bun install
+      - name: Verify same GPUIX Node-API addon loads in both engines
+        run: |
+          set -euo pipefail
+          export NODE_PATH="$PWD/node_modules"
+          bun -e 'const x=require("@gpuix/native"); if(typeof x.GpuixRenderer!=="function")throw Error("Bun cannot load Native"); console.log("Bun Node-API OK")'
+          "$HERMES_NODE" -e 'const x=require("@gpuix/native"); if(typeof x.GpuixRenderer!=="function")throw Error("Hermes cannot load Native"); console.log("Hermes Node-API OK")'
+      - name: Build exactly one CommonJS file per framework
+        run: |
+          set -euo pipefail
+          bun build bench/engines/solid.tsx --target=node --format=cjs \
+            --preload @gpuix/solid/preload --external=@gpuix/native \
+            --production --outfile=dist/engines/solid.cjs
+          bun build bench/engines/svelte.ts --target=node --format=cjs \
+            --preload gpuix-svelte/plugin --conditions custom-renderer \
+            --external=@gpuix/native --production --outfile=dist/engines/svelte.cjs
+          for fw in solid svelte; do
+            perl -pi -e 's/\bimport\(/require(/g' "dist/engines/$fw.cjs"
+            echo "$fw byte length: $(wc -c < dist/engines/$fw.cjs)"
+            if grep -Eq '\bimport\(' "dist/engines/$fw.cjs"; then exit 1; fi
+          done
+          sha256sum dist/engines/*.cjs | tee results/bundle-sha256.txt
+      - name: Run both compiled applications in both engines, 3 native trials
+        run: |
+          set -euo pipefail
+          for trial in 0 1 2; do
+            if (( trial % 2 == 0 )); then engines=(bun hermes); else engines=(hermes bun); fi
+            for engine in "${engines[@]}"; do
+              for fw in solid svelte; do
+                echo "::group::engine=$engine framework=$fw trial=$trial"
+                xvfb-run -a -s "-screen 0 1280x950x24" \
+                  timeout 120s bash scripts/run-hermes-case.sh "$engine" "$fw" "$trial"
+                echo "::endgroup::"
+              done
+            done
+          done
+      - name: Aggregate verified numbers
+        run: |
+          python3 bench/compare_engines.py
+          cat results/HERMES.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload all reports, source checksums, logs and real X11 screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-vs-bun-linux-native
+          path: results/
+          retention-days: 30
