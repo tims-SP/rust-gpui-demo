@@ -1,4 +1,8 @@
 node_modules/
+dist/
+target/
 results/
-*.log
+*.hbc
+.ibex-source/
+.hermes-source/
 .DS_Store
