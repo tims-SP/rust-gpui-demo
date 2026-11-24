@@ -575,13 +575,13 @@ jobs:
             echo "ANDROID_EMULATOR_KVM_NOT_USABLE"
             exit 1
           fi
-          "$emulator_bin" -avd gpui-x86_64-arm64-bridge -no-window -no-audio -no-boot-anim \\
-            -accel on -gpu swiftshader_indirect -cores 2 \\
+          "$emulator_bin" -avd gpui-x86_64-arm64-bridge -no-window -no-audio -no-boot-anim \
+            -accel on -gpu swiftshader_indirect -cores 2 \
             -no-snapshot -no-snapshot-load -no-snapshot-save -no-metrics \
             > results-android-emulator.log 2>&1 &
           emulator_pid=$!
           echo "$emulator_pid" > /tmp/gpui-live-emulator.pid
-          echo "ANDROID_EXECUTION_MODE=TCG_X86_64_GUEST_ARM64_NATIVE_BRIDGE"
+          echo "ANDROID_EXECUTION_MODE=KVM_X86_64_GUEST_ARM64_NATIVE_BRIDGE"
 
           print_startup_diagnostics() {
             echo "--- emulator/QEMU process tree ---"
