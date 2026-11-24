@@ -1,49 +1,6 @@
-use gpui_hermes_live_spike::HermesBridge;
-use gpui_ui_mutation::Scene;
+use gpui_hermes_live_spike::SceneRuntime;
 use serde_json::Value;
-use std::{
-    ffi::c_void,
-    fs,
-    panic::{catch_unwind, AssertUnwindSafe},
-    path::{Path, PathBuf},
-    process::Command,
-    slice,
-};
-
-#[derive(Default)]
-struct MutationState {
-    scene: Scene,
-    batches: usize,
-    error: Option<String>,
-}
-
-unsafe extern "C" fn apply_mutation_batch(
-    user_data: *mut c_void,
-    payload: *const u8,
-    length: usize,
-) -> i32 {
-    if user_data.is_null() || payload.is_null() { return 1; }
-    let outcome = catch_unwind(AssertUnwindSafe(|| {
-        let state = &mut *(user_data as *mut MutationState);
-        let bytes = slice::from_raw_parts(payload, length);
-        let parsed: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
-        let batch = parsed.as_array().ok_or_else(|| "mutation payload must be an array".to_string())?;
-        state.scene.apply_batch(batch)?;
-        state.batches += 1;
-        Ok::<(), String>(())
-    }));
-    match outcome {
-        Ok(Ok(())) => 0,
-        Ok(Err(error)) => {
-            (*(user_data as *mut MutationState)).error = Some(error);
-            1
-        }
-        Err(_) => {
-            (*(user_data as *mut MutationState)).error = Some("Rust mutation callback panicked".into());
-            2
-        }
-    }
-}
+use std::{fs, path::{Path, PathBuf}, process::Command};
 
 fn compile_hbc(source: &Path, output: &Path) -> Vec<u8> {
     fs::create_dir_all(output.parent().expect("HBC output parent")).expect("create HBC output directory");
@@ -75,9 +32,8 @@ fn text_content(node: &Value) -> String {
         .map(text_content).collect()
 }
 
-fn assert_framework_scene(framework: &str, state: &MutationState, click_count: usize) {
-    assert!(state.error.is_none(), "{framework} Rust mutation callback error: {:?}", state.error);
-    let snapshot = state.scene.snapshot().expect("Rust scene snapshot");
+fn assert_framework_scene(framework: &str, runtime: &SceneRuntime, click_count: usize) {
+    let snapshot = runtime.snapshot().expect("Rust scene snapshot");
     let panel = find_by_id(&snapshot, "app").expect("app panel missing");
     assert_eq!(panel["attrs"]["theme"], "light", "{framework} theme");
     let counter = find_by_id(&snapshot, "counter").expect("counter missing");
@@ -97,23 +53,18 @@ fn run_framework(root: &Path, framework: &str, bootstrap_hbc: &[u8], click_hbc: 
     let output = root.join(format!("crates/hermes-gpui-spike/target/{framework}.hbc"));
     let app_hbc = compile_hbc(&source, &output);
 
-    let mut state = MutationState::default();
-    let mut runtime = HermesBridge::new().expect("create in-process Hermes VM");
-    runtime.install_mutation_sink(
-        apply_mutation_batch,
-        (&mut state as *mut MutationState).cast::<c_void>(),
-    ).expect("install live JSI-to-Rust mutation callback");
+    let mut runtime = SceneRuntime::new().expect("create in-process Hermes + Rust scene runtime");
     runtime.eval_hbc(bootstrap_hbc).expect("install deterministic host globals");
     runtime.eval_hbc(&app_hbc).unwrap_or_else(|error| panic!("{framework} framework HBC failed: {error}"));
-    assert!(state.batches >= 6, "{framework} expected framework flushes through JSI, got {}", state.batches);
-    assert_framework_scene(framework, &state, 1000);
-    let before_click_ops = state.scene.operations();
+    assert!(runtime.batches() >= 6, "{framework} expected framework flushes through JSI, got {}", runtime.batches());
+    assert_framework_scene(framework, &runtime, 1000);
+    let before_click_ops = runtime.operations();
 
     runtime.eval_hbc(click_hbc).expect("invoke framework's persistent interactive event");
-    assert_framework_scene(framework, &state, 1001);
-    assert!(state.scene.operations() > before_click_ops, "{framework} interactive click emitted no Rust mutations");
+    assert_framework_scene(framework, &runtime, 1001);
+    assert!(runtime.operations() > before_click_ops, "{framework} interactive click emitted no Rust mutations");
     println!("LIVE_HERMES_FRAMEWORK_HBC_JSI_RUST_PASS:{framework}:batches={}:ops={}:nodes={}",
-        state.batches, state.scene.operations(), state.scene.node_count());
+        runtime.batches(), runtime.operations(), runtime.node_count());
 }
 
 fn main() {

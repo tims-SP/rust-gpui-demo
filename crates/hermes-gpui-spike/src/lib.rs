@@ -81,3 +81,86 @@ unsafe fn take_string(value: *mut c_char) -> String {
     gpui_hermes_free_string(value);
     result
 }
+
+use gpui_ui_mutation::Scene;
+use serde_json::Value;
+use std::{panic::{catch_unwind, AssertUnwindSafe}, time::Instant};
+
+#[derive(Default)]
+struct MutationState {
+    scene: Scene,
+    batches: usize,
+    error: Option<String>,
+    pending_at: Option<Instant>,
+}
+
+unsafe extern "C" fn apply_mutation_batch(
+    user_data: *mut c_void,
+    payload: *const u8,
+    length: usize,
+) -> i32 {
+    if user_data.is_null() || payload.is_null() { return 1; }
+    let outcome = catch_unwind(AssertUnwindSafe(|| {
+        let state = &mut *(user_data as *mut MutationState);
+        let bytes = std::slice::from_raw_parts(payload, length);
+        let parsed: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
+        let batch = parsed.as_array().ok_or_else(|| "mutation payload must be an array".to_string())?;
+        state.scene.apply_batch(batch)?;
+        state.batches += 1;
+        state.pending_at = Some(Instant::now());
+        Ok::<(), String>(())
+    }));
+    match outcome {
+        Ok(Ok(())) => 0,
+        Ok(Err(error)) => {
+            (*(user_data as *mut MutationState)).error = Some(error);
+            1
+        }
+        Err(_) => {
+            (*(user_data as *mut MutationState)).error = Some("Rust mutation callback panicked".into());
+            2
+        }
+    }
+}
+
+/// One thread-affine Hermes VM and the Rust scene receiving its live JSI batches.
+/// The runtime is destroyed before the boxed callback state so JSI never retains
+/// a dangling user-data pointer.
+pub struct SceneRuntime {
+    runtime: Option<HermesBridge>,
+    state: Box<MutationState>,
+}
+
+impl SceneRuntime {
+    pub fn new() -> Result<Self, String> {
+        let mut state = Box::<MutationState>::default();
+        let mut runtime = HermesBridge::new()?;
+        runtime.install_mutation_sink(
+            apply_mutation_batch,
+            (&mut *state as *mut MutationState).cast::<c_void>(),
+        )?;
+        Ok(Self { runtime: Some(runtime), state })
+    }
+
+    pub fn eval_hbc(&mut self, bytecode: &[u8]) -> Result<String, String> {
+        let result = self.runtime.as_mut().expect("live Hermes runtime").eval_hbc(bytecode)?;
+        if let Some(error) = &self.state.error { return Err(error.clone()); }
+        Ok(result)
+    }
+
+    pub fn snapshot(&self) -> Result<Value, String> {
+        if let Some(error) = &self.state.error { return Err(error.clone()); }
+        self.state.scene.snapshot()
+    }
+
+    pub fn take_pending_at(&mut self) -> Option<Instant> { self.state.pending_at.take() }
+    pub fn batches(&self) -> usize { self.state.batches }
+    pub fn operations(&self) -> usize { self.state.scene.operations() }
+    pub fn node_count(&self) -> usize { self.state.scene.node_count() }
+}
+
+impl Drop for SceneRuntime {
+    fn drop(&mut self) {
+        drop(self.runtime.take());
+    }
+}
