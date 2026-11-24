@@ -34,6 +34,16 @@ class TestExtract(unittest.TestCase):
         with self.assertRaises(ValueError): mod.extract(log(render_callbacks_with_pending_update=0), "svelte")
     def test_repeated_results(self):
         with self.assertRaises(ValueError): mod.extract(log()+log(), "svelte")
+    def test_ios_unified_logging_prefix(self):
+        # iOS/macOS unified logging adds timestamp/process metadata before
+        # the Rust payload. The result record must still be parsed strictly.
+        raw = log()
+        raw = "\\n".join(
+            "2026-11-24 12:00:00.000 Df GpuiExample[123:456] [INFO] " + line
+            if line.startswith("GPUI_REPLAY_BENCH_RESULT:") else line
+            for line in raw.splitlines()
+        )
+        self.assertEqual(mod.extract(raw, "svelte")["p50_us"], 350)
     def test_missing_replay_source_rejected(self):
         with self.assertRaises(ValueError): mod.extract(log(source="precomputed-Hermes-JSON"), "svelte")
     def test_valid_live_hbc_jsi_record(self):
