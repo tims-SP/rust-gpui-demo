@@ -20,8 +20,6 @@ jobs:
           cache: false
       - name: Install native Hermes build dependencies
         run: sudo apt-get update -qq && sudo apt-get install -y clang cmake ninja-build libicu-dev pkg-config
-      - name: Resolve a reproducible dependency lock
-        run: cargo generate-lockfile --manifest-path crates/hermes-gpui-spike/Cargo.toml
       - name: Execute HBC and deliver its dynamic mutation batch through JSI into Rust
         run: |
           mkdir -p results/gpui-hermes-spike
