@@ -39,8 +39,8 @@ jobs:
           from pathlib import Path
           manifest = Path('.zed-source/crates/gpui/Cargo.toml')
           content = manifest.read_text()
-          dependency = 'gpui-hermes-live-spike = { path = "../../../crates/hermes-gpui-spike" }\\n'
-          marker = '[dev-dependencies]\\n'
+          dependency = 'gpui-hermes-live-spike = { path = "../../../crates/hermes-gpui-spike" }\n'
+          marker = '[dev-dependencies]\n'
           if dependency not in content:
               if marker not in content:
                   raise SystemExit('GPUI Cargo.toml has no dev-dependencies section')
