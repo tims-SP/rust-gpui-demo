@@ -301,7 +301,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # sdkmanager exits as soon as all licenses are accepted. Keep the
+          # producer's expected SIGPIPE from failing the workflow, but still
+          # require sdkmanager itself to return success.
+          set +o pipefail
           yes | sdkmanager --licenses
+          license_status=${PIPESTATUS[1]}
+          set -o pipefail
+          test "$license_status" -eq 0
           sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" \
             "emulator" "ndk;27.2.12479018" "system-images;android-35;google_apis;arm64-v8a"
           echo "ANDROID_HOME=$ANDROID_HOME"
