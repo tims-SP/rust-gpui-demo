@@ -9,7 +9,11 @@ from pathlib import Path
 
 def extract(raw: str, framework: str) -> dict:
     prefix = "GPUI_REPLAY_BENCH_RESULT:"
-    lines = [s.strip() for s in raw.splitlines() if s.startswith(prefix)]
+    # macOS/iOS unified logging prepends timestamp, process and subsystem
+    # metadata before Rust log payloads. Find the marker inside each line so
+    # the same strict one-record validation works for both stdout and os_log.
+    lines = [line[line.index(prefix):].strip()
+             for line in raw.splitlines() if prefix in line]
     if len(lines) != 1:
         raise ValueError(f"expected exactly one real GPUI result, got {len(lines)}")
     data = json.loads(lines[0][len(prefix):])
