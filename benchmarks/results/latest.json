@@ -1,6 +1,6 @@
 {
   "schema": "six-platform-benchmark/v1",
-  "generated_at_utc": "2026-11-24T00:24:56.622Z",
+  "generated_at_utc": "2026-11-24T01:11:25Z",
   "repo": "tims-SP/rust-gpui-demo",
   "cells": [
     {
@@ -266,5 +266,231 @@
       "artifact": "android-emulator-hermes-svelte-solid-evidence"
     }
   },
-  "complete": false
+  "complete": false,
+  "live_hermes": {
+    "source_file": "benchmarks/results/live-hermes.json",
+    "schema": "live-hermes-gpui/v1",
+    "generated_at_utc": "2026-11-24T01:07:00Z",
+    "repo": "tims-SP/rust-gpui-demo",
+    "engine": {
+      "runtime": "Expo Ibex2 / unmodified Hermes",
+      "source_commit": "24cd0ae8cdd20106bed04cd3a4a2378d1dd81995",
+      "engine_digest": "sha256-ee46fde82bc5bea2cfa32b2418618efb20f50c4f95c731032b01a9654bc92647",
+      "hbc_bytecode_version": 99
+    },
+    "cells": [
+      {
+        "platform": "macos",
+        "framework": "solid",
+        "status": "PASS",
+        "ci_run_id": 45297305246,
+        "ci_sha": "8388c753f3571583abd85a9b4913857a984530e4",
+        "artifact": "gpui-macos-live-hermes-svelte-solid-evidence",
+        "source": "live-Hermes-HBC-in-process",
+        "live_hermes_vm": true,
+        "live_jsi_to_gpui": true,
+        "driver": "gpui-timer-repeated-framework-click-hbc",
+        "metric": "jsi_mutation_to_render_callback_us_NOT_GPU_present",
+        "scheduled_updates": 120,
+        "applied_updates": 120,
+        "interactive_hermes_mutation_batches": 120,
+        "initial_hermes_mutation_batches": 7,
+        "total_hermes_mutation_batches": 127,
+        "render_callbacks_with_pending_update": 120,
+        "render_callback_count": 242,
+        "p50_us": 10139,
+        "p95_us": 13805,
+        "p99_us": 15484,
+        "elapsed_ms": 3934,
+        "screenshot": "solid.png",
+        "screenshot_size": "1024x768",
+        "screenshot_pixels_verified": true,
+        "gpu_present_latency_ms": null,
+        "end_to_end_latency_ms": null
+      },
+      {
+        "platform": "macos",
+        "framework": "svelte",
+        "status": "PASS",
+        "ci_run_id": 45297305246,
+        "ci_sha": "8388c753f3571583abd85a9b4913857a984530e4",
+        "artifact": "gpui-macos-live-hermes-svelte-solid-evidence",
+        "source": "live-Hermes-HBC-in-process",
+        "live_hermes_vm": true,
+        "live_jsi_to_gpui": true,
+        "driver": "gpui-timer-repeated-framework-click-hbc",
+        "metric": "jsi_mutation_to_render_callback_us_NOT_GPU_present",
+        "scheduled_updates": 120,
+        "applied_updates": 120,
+        "interactive_hermes_mutation_batches": 120,
+        "initial_hermes_mutation_batches": 7,
+        "total_hermes_mutation_batches": 127,
+        "render_callbacks_with_pending_update": 120,
+        "render_callback_count": 235,
+        "p50_us": 10387,
+        "p95_us": 13733,
+        "p99_us": 14021,
+        "elapsed_ms": 3835,
+        "screenshot": "svelte.png",
+        "screenshot_size": "1024x768",
+        "screenshot_pixels_verified": true,
+        "gpu_present_latency_ms": null,
+        "end_to_end_latency_ms": null
+      },
+      {
+        "platform": "windows",
+        "framework": "solid",
+        "status": "PASS",
+        "ci_run_id": 45301213456,
+        "ci_sha": "b927b19a6e6919101507cdd67cb6dd7296cfd2b8",
+        "artifact": "windows-live-hermes-svelte-solid-evidence",
+        "source": "live-Hermes-HBC-in-process",
+        "live_hermes_vm": true,
+        "live_jsi_to_gpui": true,
+        "driver": "gpui-timer-repeated-framework-click-hbc",
+        "metric": "jsi_mutation_to_render_callback_us_NOT_GPU_present",
+        "scheduled_updates": 120,
+        "applied_updates": 120,
+        "interactive_hermes_mutation_batches": 120,
+        "initial_hermes_mutation_batches": 7,
+        "total_hermes_mutation_batches": 127,
+        "render_callbacks_with_pending_update": 120,
+        "render_callback_count": 122,
+        "p50_us": 3645,
+        "p95_us": 17475,
+        "p99_us": 17964,
+        "elapsed_ms": 4087,
+        "scene_operations": 47137,
+        "screenshot": "solid.png",
+        "screenshot_size": "1024x768",
+        "screenshot_pixels_verified": true,
+        "gpu_present_latency_ms": null,
+        "end_to_end_latency_ms": null
+      },
+      {
+        "platform": "windows",
+        "framework": "svelte",
+        "status": "PASS",
+        "ci_run_id": 45301213456,
+        "ci_sha": "b927b19a6e6919101507cdd67cb6dd7296cfd2b8",
+        "artifact": "windows-live-hermes-svelte-solid-evidence",
+        "source": "live-Hermes-HBC-in-process",
+        "live_hermes_vm": true,
+        "live_jsi_to_gpui": true,
+        "driver": "gpui-timer-repeated-framework-click-hbc",
+        "metric": "jsi_mutation_to_render_callback_us_NOT_GPU_present",
+        "scheduled_updates": 120,
+        "applied_updates": 120,
+        "interactive_hermes_mutation_batches": 120,
+        "initial_hermes_mutation_batches": 7,
+        "total_hermes_mutation_batches": 127,
+        "render_callbacks_with_pending_update": 120,
+        "render_callback_count": 122,
+        "p50_us": 4500,
+        "p95_us": 17151,
+        "p99_us": 17850,
+        "elapsed_ms": 4068,
+        "scene_operations": 53215,
+        "screenshot": "svelte.png",
+        "screenshot_size": "1024x768",
+        "screenshot_pixels_verified": true,
+        "gpu_present_latency_ms": null,
+        "end_to_end_latency_ms": null
+      }
+    ],
+    "summary": {
+      "live_hermes_jsi_gpui_render_cells_passed": 4,
+      "live_hermes_jsi_gpui_render_cells_total": 4,
+      "gpu_present_cells_measured": 0,
+      "full_end_to_end_cells_measured": 0,
+      "live_platforms_proven": [
+        "macos",
+        "windows"
+      ]
+    }
+  },
+  "hermes_jsi_rust_scene": {
+    "status": "PASS",
+    "ci_run_id": 45301192353,
+    "ci_sha": "b927b19a6e6919101507cdd67cb6dd7296cfd2b8",
+    "artifact": "live-svelte-solid-hermes-jsi-rust-scene",
+    "hbc_bytecode_version": 99,
+    "engine_digest": "sha256-ee46fde82bc5bea2cfa32b2418618efb20f50c4f95c731032b01a9654bc92647",
+    "frameworks": [
+      {
+        "framework": "svelte",
+        "hbc_artifact": "svelte.hbc",
+        "hbc_size_bytes": 190719,
+        "jsi_mutation_batches": 8,
+        "rust_scene_operations": 53096
+      },
+      {
+        "framework": "solid",
+        "hbc_artifact": "solid.hbc",
+        "hbc_size_bytes": 44302,
+        "jsi_mutation_batches": 8,
+        "rust_scene_operations": 47018
+      }
+    ],
+    "gpu_present_latency_ms": null,
+    "end_to_end_latency_ms": null,
+    "note": "Actual HBC executed in persistent in-process Hermes VMs; JSI mutations applied to Rust Scene. This run does not prove GPUI window render or GPU Present."
+  },
+  "stage_coverage": {
+    "framework_hbc_build": {
+      "status": "PASS",
+      "frameworks": [
+        "svelte",
+        "solid"
+      ],
+      "ci_run_id": 45301192353,
+      "hbc_bytecode_version": 99
+    },
+    "hermes_vm_execution": {
+      "status": "PASS",
+      "live_platforms": [
+        "macos",
+        "windows"
+      ],
+      "live_gpui_cells_passed": 4,
+      "live_gpui_cells_total": 4
+    },
+    "jsi_to_rust_scene": {
+      "status": "PASS",
+      "frameworks_passed": 2,
+      "ci_run_id": 45301192353
+    },
+    "jsi_to_gpui": {
+      "status": "PASS",
+      "cells_passed": 4,
+      "cells_total": 4,
+      "platforms": [
+        "macos",
+        "windows"
+      ]
+    },
+    "gpui_render_callback": {
+      "status": "PASS",
+      "live_cells_passed": 4,
+      "live_cells_total": 4,
+      "updates_per_cell": 120
+    },
+    "gpui_update_to_render_latency": {
+      "status": "MEASURED",
+      "live_cells": 4,
+      "percentiles": [
+        "p50_us",
+        "p95_us",
+        "p99_us"
+      ]
+    },
+    "gpu_present": {
+      "status": "NOT_MEASURED",
+      "cells_measured": 0
+    },
+    "full_end_to_end": {
+      "status": "NOT_MEASURED",
+      "cells_measured": 0
+    }
+  }
 }
