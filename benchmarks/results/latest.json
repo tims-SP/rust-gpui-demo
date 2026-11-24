@@ -1,6 +1,6 @@
 {
   "schema": "six-platform-benchmark/v1",
-  "generated_at_utc": "2026-11-24T00:23:01.287Z",
+  "generated_at_utc": "2026-11-24T00:24:56.622Z",
   "repo": "tims-SP/rust-gpui-demo",
   "cells": [
     {
@@ -150,15 +150,15 @@
     {
       "platform": "ios",
       "framework": "svelte",
-      "ci_run_id": 45242919984,
-      "ci_sha": "04c44e268844b66d60cd8973ab817494ab5f2dec",
+      "ci_run_id": 45286884084,
+      "ci_sha": "59cd2863ffde2e79690819b1270fe2c6e24dad1c",
       "gpui_render_verified": true,
       "metric_status": "NOT_MEASURED",
       "gpui_replay_p50_us": null,
       "gpui_replay_p95_us": null,
       "gpui_replay_p99_us": null,
-      "g1_screenshot_readiness_ms": 15556,
-      "g1_screenshot_attempts": 1,
+      "g1_screenshot_readiness_ms": 21075,
+      "g1_screenshot_attempts": 2,
       "scene_source": "precomputed-Hermes-JSON",
       "hermes_running_in_same_gpui_app": false,
       "live_jsi_to_gpui": false,
@@ -168,14 +168,14 @@
     {
       "platform": "ios",
       "framework": "solid",
-      "ci_run_id": 45242919984,
-      "ci_sha": "04c44e268844b66d60cd8973ab817494ab5f2dec",
+      "ci_run_id": 45286884084,
+      "ci_sha": "59cd2863ffde2e79690819b1270fe2c6e24dad1c",
       "gpui_render_verified": true,
       "metric_status": "NOT_MEASURED",
       "gpui_replay_p50_us": null,
       "gpui_replay_p95_us": null,
       "gpui_replay_p99_us": null,
-      "g1_screenshot_readiness_ms": 3321,
+      "g1_screenshot_readiness_ms": 1906,
       "g1_screenshot_attempts": 1,
       "scene_source": "precomputed-Hermes-JSON",
       "hermes_running_in_same_gpui_app": false,
@@ -251,11 +251,12 @@
       "artifact": "gpui-web-official-canvas-svelte-solid"
     },
     "ios": {
-      "run_id": 45242919984,
-      "sha": "04c44e268844b66d60cd8973ab817494ab5f2dec",
+      "run_id": 45286884084,
+      "sha": "59cd2863ffde2e79690819b1270fe2c6e24dad1c",
       "branch": "feature/mobile-scene-parity",
-      "created_at": "2026-11-23T18:52:14Z",
-      "artifact": "gpui-mobile-hermes-svelte-solid-ios-simulator"
+      "created_at": "2026-11-23T23:21:42Z",
+      "artifact": "gpui-mobile-hermes-svelte-solid-ios-simulator",
+      "evidence_note": "Both .app bundles built and both scenes passed simulator screenshot pixel verification; precomputed Hermes scenes, no on-device Hermes VM or live JSI."
     },
     "android": {
       "run_id": 45291575255,
