@@ -1,0 +1,8 @@
+[package]
+name = "gpui-hermes-live-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+ibex2-runtime = { git = "https://github.com/expo/ibex", rev = "24cd0ae8cdd20106bed04cd3a4a2378d1dd81995", default-features = false }
