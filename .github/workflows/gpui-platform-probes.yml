@@ -106,7 +106,7 @@ jobs:
 
 
   android-gpui-mobile-apk:
-    if: ${{ !inputs.live_mobile_hermes }}
+    if: ${{ !inputs.live_mobile_hermes && (github.event_name != 'push' || github.ref != 'refs/heads/feature/gpui-frame-bench' || contains(github.event.head_commit.message, '[android]')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -311,7 +311,7 @@ jobs:
 
   android-live-hermes-window:
     name: android-live-hermes-x86_64-window
-    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench') }}
+    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
