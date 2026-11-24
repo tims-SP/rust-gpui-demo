@@ -1,7 +1,7 @@
 name: GPUI Windows macOS iOS Android build feasibility
 on:
   push:
-    branches: [main]
+    branches: [main, feature/gpui-frame-bench]
     paths: ['.github/workflows/gpui-platform-probes.yml']
   workflow_dispatch:
     inputs:
@@ -24,7 +24,7 @@ permissions:
   actions: read
 jobs:
   desktop-gpui-compile:
-    if: ${{ !inputs.live_mobile_hermes }}
+    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
     strategy:
       fail-fast: false
       matrix:
@@ -59,7 +59,7 @@ jobs:
         shell: bash
         run: echo "GPUI_DESKTOP_COMPILE_PASS:${{ matrix.label }}"
   ios-gpui-compile:
-    if: ${{ !inputs.live_mobile_hermes }}
+    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -79,7 +79,7 @@ jobs:
           cargo check -p gpui_ios --target aarch64-apple-ios-sim
           echo GPUI_IOS_BACKEND_COMPILE_PASS
   android-gpui-mobile-compile:
-    if: ${{ !inputs.live_mobile_hermes }}
+    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -106,7 +106,7 @@ jobs:
 
 
   android-gpui-mobile-apk:
-    if: ${{ !inputs.live_mobile_hermes }}
+    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -162,7 +162,7 @@ jobs:
           retention-days: 14
 
   ios-live-hermes-window:
-    if: ${{ inputs.live_mobile_hermes && inputs.live_mobile_target != 'android' }}
+    if: ${{ (inputs.live_mobile_hermes || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench')) && inputs.live_mobile_target != 'android' }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -298,7 +298,7 @@ jobs:
           retention-days: 14
 
   android-live-hermes-window:
-    if: ${{ inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios' }}
+    if: ${{ (inputs.live_mobile_hermes || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench')) && inputs.live_mobile_target != 'ios' }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
