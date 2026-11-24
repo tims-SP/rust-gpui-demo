@@ -17,8 +17,14 @@ def extract(raw: str, framework: str) -> dict:
         raise ValueError("framework mismatch")
     if data.get("schema") != "gpui-render-replay/v1":
         raise ValueError("schema mismatch")
-    if data.get("live_jsi_to_gpui") is not False or data.get("live_hermes_vm") is not False:
-        raise ValueError("invalid source claims")
+    live = data.get("live_hermes_vm") is True and data.get("live_jsi_to_gpui") is True
+    replay = data.get("live_jsi_to_gpui") is False and data.get("live_hermes_vm") is False
+    if not (live or replay):
+        raise ValueError("inconsistent Hermes/JSI source claims")
+    if live and data.get("source") != "live-Hermes-HBC-in-process":
+        raise ValueError("live Hermes run has an invalid source marker")
+    if replay and data.get("source") != "precomputed-Hermes-scene":
+        raise ValueError("replay run has an invalid source marker")
     if data.get("scheduled_updates") != 120 or data.get("applied_updates") != 120:
         raise ValueError("incomplete update sequence")
     if data.get("render_callbacks_with_pending_update", 0) < 20:
