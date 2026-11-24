@@ -193,27 +193,30 @@ jobs:
           from pathlib import Path
           project = Path('.gpui-mobile/example/ios/project.yml')
           text = project.read_text()
-          old = 'cargo build --lib --target "${RUST_TARGET}" ${CARGO_FLAGS}'
+          old = '          cargo build --lib --target "${RUST_TARGET}" ${CARGO_FLAGS}'
           cargo = 'cargo build --lib --features live-hermes --target "${RUST_TARGET}" ${CARGO_FLAGS}'
-          new = '''export CARGO_TARGET_DIR="${RUST_PROJECT_DIR}/target"
-          ''' + cargo + '''
-          if [ "${CONFIGURATION}" = "Release" ]; then CARGO_PROFILE_DIR=release; else CARGO_PROFILE_DIR=debug; fi
-          EXPECTED_STATIC_LIB="${CARGO_TARGET_DIR}/${RUST_TARGET}/${CARGO_PROFILE_DIR}/libgpui_mobile_example.a"
-          if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then
-            FOUND_STATIC_LIB="$(find "${CARGO_TARGET_DIR}" -type f -name libgpui_mobile_example.a -print -quit)"
-            if [ -n "${FOUND_STATIC_LIB}" ]; then
-              mkdir -p "$(dirname "${EXPECTED_STATIC_LIB}")"
-              cp "${FOUND_STATIC_LIB}" "${EXPECTED_STATIC_LIB}"
-            fi
-          fi
-          if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then
-            echo "ERROR: Cargo completed but iOS static library is missing: ${EXPECTED_STATIC_LIB}"
-            echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
-            find "${CARGO_TARGET_DIR}" -type f -name '*.a' -print | head -100 || true
-            exit 1
-          fi
-          echo "IOS_RUST_STATIC_LIBRARY_PASS:${EXPECTED_STATIC_LIB}"
-          ls -lh "${EXPECTED_STATIC_LIB}"'''
+          lines = [
+              'export CARGO_TARGET_DIR="${RUST_PROJECT_DIR}/target"',
+              cargo,
+              'if [ "${CONFIGURATION}" = "Release" ]; then CARGO_PROFILE_DIR=release; else CARGO_PROFILE_DIR=debug; fi',
+              'EXPECTED_STATIC_LIB="${CARGO_TARGET_DIR}/${RUST_TARGET}/${CARGO_PROFILE_DIR}/libgpui_mobile_example.a"',
+              'if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then',
+              '  FOUND_STATIC_LIB="$(find "${CARGO_TARGET_DIR}" -type f -name libgpui_mobile_example.a -print -quit)"',
+              '  if [ -n "${FOUND_STATIC_LIB}" ]; then',
+              '    mkdir -p "$(dirname "${EXPECTED_STATIC_LIB}")"',
+              '    cp "${FOUND_STATIC_LIB}" "${EXPECTED_STATIC_LIB}"',
+              '  fi',
+              'fi',
+              'if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then',
+              '  echo "ERROR: Cargo completed but iOS static library is missing: ${EXPECTED_STATIC_LIB}"',
+              '  echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"',
+              '  find "${CARGO_TARGET_DIR}" -type f -name "*.a" -print | head -100 || true',
+              '  exit 1',
+              'fi',
+              'echo "IOS_RUST_STATIC_LIBRARY_PASS:${EXPECTED_STATIC_LIB}"',
+              'ls -lh "${EXPECTED_STATIC_LIB}"',
+          ]
+          new = "\n".join("          " + line for line in lines)
           if new not in text:
               if old not in text:
                   raise SystemExit('Could not locate the GPUI Mobile iOS Rust build command')
