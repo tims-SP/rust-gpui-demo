@@ -506,6 +506,59 @@ jobs:
           test -x "$emulator_bin"
           "$emulator_bin" -version
           echo "ANDROID_EMULATOR_CPU_MODE=TCG (no KVM on hosted ARM64 runner)"
+      - name: Patch ARM64 emulator TLS overlap for TCG
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          metrics_lib="$ANDROID_HOME/emulator/lib64/libandroid-emu-metrics.so"
+          python3 - "$metrics_lib" <<'PYTLS'
+          import hashlib
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          data = path.read_bytes()
+          original_sha256 = "7eb64f1740dc5800f66b2422e79251a9de60abcd4cff1567e725f3a3c9ac4068"
+          patched_sha256 = "47419499c79d83900abb972cdd06ba45162d19e1c9f5c91c34e03e46ec361305"
+          original = bytes.fromhex("53 d0 3b d5 73 02 40 91 73 a2 00 91")
+          patched = bytes.fromhex("53 d0 3b d5 73 02 40 91 73 82 00 91")
+
+          actual_sha256 = hashlib.sha256(data).hexdigest()
+          if actual_sha256 != original_sha256:
+              raise SystemExit(
+                  f"Refusing to patch unexpected libandroid-emu-metrics.so: "
+                  f"sha256={actual_sha256}"
+              )
+
+          offsets = []
+          cursor = 0
+          while True:
+              offset = data.find(original, cursor)
+              if offset < 0:
+                  break
+              offsets.append(offset)
+              cursor = offset + 1
+          if offsets != [0x1C2A24]:
+              raise SystemExit(f"Expected one known TLS sequence at 0x1c2a24, found {offsets}")
+
+          offset = offsets[0]
+          patched_data = data[:offset] + patched + data[offset + len(original):]
+          if patched_data.count(patched) != data.count(original):
+              raise SystemExit("Post-patch TLS instruction count validation failed")
+          if hashlib.sha256(patched_data).hexdigest() != patched_sha256:
+              raise SystemExit("Post-patch library checksum mismatch")
+
+          path.write_bytes(patched_data)
+          verified = path.read_bytes()
+          if hashlib.sha256(verified).hexdigest() != patched_sha256:
+              raise SystemExit("On-disk patched library checksum mismatch")
+          if verified.find(original) != -1 or verified.find(patched) != offset:
+              raise SystemExit("On-disk TLS instruction verification failed")
+
+          print(f"GPUI_ANDROID_EMULATOR_TLS_PATCH_PASS:offset=0x{offset + 8:x}:0x28->0x20")
+          print(f"GPUI_ANDROID_EMULATOR_TLS_PATCH_SHA256:{patched_sha256}")
+          PYTLS
       - name: Create and boot ARM64 Android emulator (TCG)
         timeout-minutes: 60
         shell: bash
@@ -626,6 +679,8 @@ jobs:
               "cpu_acceleration": "qemu-tcg-software",
               "gic_version": 3,
               "cpu_model": "max",
+              "metrics_tls_patch": "libandroid-emu-metrics.so:TPIDR_EL0+0x28->+0x20",
+              "metrics_library_sha256": "47419499c79d83900abb972cdd06ba45162d19e1c9f5c91c34e03e46ec361305",
               "kvm_available": pathlib.Path("/dev/kvm").exists(),
               "qemu_pid": int(qemu_pid),
               "emulator_package": "Changqing-JING/android-emulator-aarch64-linux@v2.12.0-19097-g85fa07f04ef",
