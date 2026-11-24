@@ -38,7 +38,7 @@ class TestExtract(unittest.TestCase):
         # iOS/macOS unified logging adds timestamp/process metadata before
         # the Rust payload. The result record must still be parsed strictly.
         raw = log()
-        raw = "\\n".join(
+        raw = "\n".join(
             "2026-11-24 12:00:00.000 Df GpuiExample[123:456] [INFO] " + line
             if line.startswith("GPUI_REPLAY_BENCH_RESULT:") else line
             for line in raw.splitlines()
