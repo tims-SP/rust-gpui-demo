@@ -67,11 +67,9 @@ fn percentile(sorted:&[u64],p:f64)->Option<u64>{
 }
 
 impl Render for BenchView {
-    fn render(&mut self,window:&mut Window,_cx:&mut Context<Self>)->impl IntoElement {
-        // The frame request is macOS-specific; consume the parameter elsewhere.
-        let _ = window;
+    fn render(&mut self,_window:&mut Window,_cx:&mut Context<Self>)->impl IntoElement {
         #[cfg(target_os = "macos")]
-        window.request_animation_frame();
+        _window.request_animation_frame();
         if let Ok(mut stats)=self.stats.try_borrow_mut(){
             stats.actual_render_calls+=1;
             if let Some(issued)=stats.pending_at.take(){
