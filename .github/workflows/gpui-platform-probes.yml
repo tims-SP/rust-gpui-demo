@@ -19,6 +19,11 @@ on:
           - android
         required: false
         default: both
+      android_apk_artifact_run_id:
+        description: "Reuse ARM64 live-Hermes APKs from a prior successful workflow run instead of rebuilding"
+        type: string
+        required: false
+        default: ""
 permissions:
   contents: read
   actions: read
@@ -320,7 +325,7 @@ jobs:
 
   android-live-hermes-arm64-build:
     name: android-live-hermes-arm64-build
-    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')) }}
+    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios' && inputs.android_apk_artifact_run_id == '') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -425,7 +430,7 @@ jobs:
   android-live-hermes-window:
     name: android-live-hermes-arm64-tcg-window
     needs: android-live-hermes-arm64-build
-    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')) }}
+    if: ${{ !cancelled() && (needs.android-live-hermes-arm64-build.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.android_apk_artifact_run_id != '')) && ((inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')))}}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
     steps:
@@ -433,6 +438,8 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: gpui-android-arm64-live-hermes-apks
+          run-id: ${{ inputs.android_apk_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
           path: results/android-live-hermes
       - uses: actions/setup-java@v4
         with:
@@ -500,7 +507,7 @@ jobs:
           "$emulator_bin" -version
           echo "ANDROID_EMULATOR_CPU_MODE=TCG (no KVM on hosted ARM64 runner)"
       - name: Create and boot ARM64 Android emulator (TCG)
-        timeout-minutes: 50
+        timeout-minutes: 60
         shell: bash
         run: |
           set -euo pipefail
@@ -509,68 +516,117 @@ jobs:
             --package "system-images;android-35;google_apis;arm64-v8a"
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           export ANDROID_I_WANT_MY_TCG=yes
+          # TCG cannot use gic-version=host (that requires KVM). The second
+          # -machine option merges with the launcher's machine properties and
+          # overrides only the GIC selection, keeping the Android machine type.
           "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
             -accel off -gpu swiftshader_indirect -no-snapshot-load -no-snapshot-save -no-metrics \
+            -qemu -machine gic-version=3 \
             > results-android-emulator.log 2>&1 &
-          echo $! > /tmp/gpui-live-emulator.pid
+          emulator_pid=$!
+          echo "$emulator_pid" > /tmp/gpui-live-emulator.pid
+          echo "ANDROID_EMULATOR_GIC_VERSION=3 (TCG-compatible)"
+
+          print_startup_diagnostics() {
+            echo "--- Android emulator process tree ---"
+            ps -eo pid,ppid,stat,etime,pcpu,pmem,args | grep -E '[e]mulator|[q]emu-system-aarch64' || true
+            echo "--- ADB devices ---"
+            timeout 10s adb devices -l || true
+            echo "--- Recent Android logcat ---"
+            timeout 12s adb logcat -d -t 300 || true
+            echo "--- Emulator/QEMU log ---"
+            cat results-android-emulator.log || true
+          }
+
+          qemu_pid=""
+          for tick in $(seq 1 30); do
+            qemu_pid="$(pgrep -f '(^|/)qemu-system-aarch64-headless([[:space:]]|$)' | head -n 1 || true)"
+            if [[ -n "$qemu_pid" ]]; then
+              break
+            fi
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Android emulator launcher exited before QEMU backend started"
+              print_startup_diagnostics
+              exit 1
+            fi
+            if grep -Fq "gic-version=host requires KVM" results-android-emulator.log; then
+              echo "QEMU still selected the KVM-only GIC mode despite the TCG override"
+              print_startup_diagnostics
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [[ -z "$qemu_pid" ]]; then
+            echo "Android QEMU backend process did not start within 30 seconds"
+            print_startup_diagnostics
+            exit 1
+          fi
+          echo "$qemu_pid" > /tmp/gpui-live-qemu.pid
+          echo "ANDROID_QEMU_BACKEND_PID=$qemu_pid"
+
+          assert_qemu_running() {
+            local state
+            state="$(ps -o stat= -p "$qemu_pid" 2>/dev/null | tr -d '[:space:]' || true)"
+            if [[ -z "$state" || "$state" == Z* ]]; then
+              echo "Android QEMU backend exited before Android became ready (pid=$qemu_pid state=${state:-missing})"
+              print_startup_diagnostics
+              exit 1
+            fi
+            if grep -Fq "gic-version=host requires KVM" results-android-emulator.log; then
+              echo "Android QEMU selected a KVM-only GIC mode under TCG"
+              print_startup_diagnostics
+              exit 1
+            fi
+          }
+
+          adb_deadline=$((SECONDS + 20 * 60))
           device_ready=false
-          for tick in $(seq 1 600); do
-            if adb get-state 2>/dev/null | grep -qx device; then
+          while (( SECONDS < adb_deadline )); do
+            if timeout 5s adb get-state 2>/dev/null | grep -qx device; then
               device_ready=true
               break
             fi
-            if ! kill -0 "$(cat /tmp/gpui-live-emulator.pid)" 2>/dev/null; then
-              echo "Android emulator process exited before ADB became ready"
-              cat results-android-emulator.log
-              exit 1
-            fi
+            assert_qemu_running
             sleep 2
           done
           if [[ "$device_ready" != true ]]; then
-            echo "Timed out waiting 20 minutes for Android ADB device (TCG boot)"
-            adb devices -l || true
-            cat results-android-emulator.log
+            echo "Timed out after 20 minutes waiting for Android ADB device (TCG)"
+            print_startup_diagnostics
             exit 1
           fi
+
+          boot_deadline=$((SECONDS + 30 * 60))
           booted=false
-          for tick in $(seq 1 1800); do
-            boot_state="$(python3 - <<'PYADB'
-          import subprocess
-          try:
-              p = subprocess.run(["adb", "shell", "getprop", "sys.boot_completed"],
-                                 capture_output=True, text=True, timeout=5)
-              print(p.stdout.strip())
-          except subprocess.TimeoutExpired:
-              print("adb-command-timeout")
-          PYADB
-          )"
-            if [[ "$boot_state" == "1" ]]; then booted=true; break; fi
-            if ! kill -0 "$(cat /tmp/gpui-live-emulator.pid)" 2>/dev/null; then
-              echo "Android emulator exited during boot"
-              cat results-android-emulator.log
-              exit 1
+          while (( SECONDS < boot_deadline )); do
+            boot_state="$(timeout 7s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [[ "$boot_state" == "1" ]]; then
+              booted=true
+              break
             fi
+            assert_qemu_running
             sleep 2
           done
           if [[ "$booted" != true ]]; then
-            echo "Timed out waiting 30 minutes for Android sys.boot_completed (TCG)"
-            adb devices -l || true
-            adb logcat -d -t 300 || true
-            cat results-android-emulator.log
+            echo "Timed out after 30 minutes waiting for Android sys.boot_completed (TCG)"
+            print_startup_diagnostics
             exit 1
           fi
-          runtime_abi="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
+
+          runtime_abi="$(timeout 10s adb shell getprop ro.product.cpu.abi | tr -d '\r')"
           echo "ANDROID_RUNTIME_ABI=$runtime_abi"
           test "$runtime_abi" = "arm64-v8a"
           mkdir -p "$GITHUB_WORKSPACE/results/android-live-hermes"
-          python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/runtime-environment.json" "$runtime_abi" <<'PYENV'
+          python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/runtime-environment.json" "$runtime_abi" "$qemu_pid" <<'PYENV'
           import json, pathlib, platform, sys
-          out, guest_abi = sys.argv[1:]
+          out, guest_abi, qemu_pid = sys.argv[1:]
           json.dump({
               "host_arch": platform.machine(),
               "guest_abi": guest_abi,
               "cpu_acceleration": "qemu-tcg-software",
+              "gic_version": 3,
               "kvm_available": pathlib.Path("/dev/kvm").exists(),
+              "qemu_pid": int(qemu_pid),
               "emulator_package": "Changqing-JING/android-emulator-aarch64-linux@v2.12.0-19097-g85fa07f04ef",
               "emulator_sha256": "67ce4f576687b067d9b36668405b86b9749745d67d31037616aac12c49c63a65"
           }, open(out, "w"), indent=2)
@@ -620,8 +676,13 @@ jobs:
           mkdir -p results/android-live-hermes
           if [ -s /tmp/gpui-live-emulator.pid ]; then
             emulator_pid="$(cat /tmp/gpui-live-emulator.pid)"
-            if command -v timeout >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
+            if command -v timeout >/dev/null 2>&1 && timeout 5s adb get-state >/dev/null 2>&1; then
               timeout 12s adb logcat -d -s gpui-mobile-example:I > results/android-live-hermes/final-logcat.txt 2>&1
+            fi
+            if [ -s /tmp/gpui-live-qemu.pid ]; then
+              qemu_pid="$(cat /tmp/gpui-live-qemu.pid)"
+              kill "$qemu_pid" 2>/dev/null
+              rm -f /tmp/gpui-live-qemu.pid
             fi
             kill "$emulator_pid" 2>/dev/null
             wait "$emulator_pid" 2>/dev/null
