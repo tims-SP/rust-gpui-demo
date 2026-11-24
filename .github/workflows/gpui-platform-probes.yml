@@ -398,9 +398,19 @@ jobs:
       - if: always()
         shell: bash
         run: |
+          set +e
           mkdir -p results/android-live-hermes
-          adb logcat -d -s gpui-mobile-example:I > results/android-live-hermes/final-logcat.txt 2>&1 || true
-          if [ -f /tmp/gpui-live-emulator.pid ]; then kill "$(cat /tmp/gpui-live-emulator.pid)" 2>/dev/null || true; fi
+          if [ -s /tmp/gpui-live-emulator.pid ]; then
+            emulator_pid="$(cat /tmp/gpui-live-emulator.pid)"
+            if command -v timeout >/dev/null 2>&1 && adb get-state >/dev/null 2>&1; then
+              timeout 12s adb logcat -d -s gpui-mobile-example:I > results/android-live-hermes/final-logcat.txt 2>&1
+            fi
+            kill "$emulator_pid" 2>/dev/null
+            wait "$emulator_pid" 2>/dev/null
+            rm -f /tmp/gpui-live-emulator.pid
+          else
+            : > results/android-live-hermes/final-logcat.txt
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
