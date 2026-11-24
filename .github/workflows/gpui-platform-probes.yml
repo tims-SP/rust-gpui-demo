@@ -315,7 +315,7 @@ jobs:
               path = Path(".gpui-mobile/example") / relative
               content = path.read_text()
               content = re.sub(r"(?m)^(\s*)mavenCentral\(\)$",
-                               lambda match: match.group(1) + mirror + "\\n" + match.group(1) + "mavenCentral()",
+                               lambda match: match.group(1) + mirror + "\n" + match.group(1) + "mavenCentral()",
                                content)
               path.write_text(content)
           PY
