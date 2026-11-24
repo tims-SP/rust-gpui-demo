@@ -30,7 +30,7 @@ boot effects, and is not a clean Svelte-vs-Solid speed comparison.
 **Measured replay cells:** 8/12.
 **Rendered cells:** 12/12.
 **Live JSI→Rust Scene integration:** PASS for both frameworks in [Run 45295492997](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45295492997).
-**Live JSI→GPUI window integration:** pending macOS runtime acceptance.
+**Live JSI→GPUI window integration:** PASS on macOS for both frameworks in [Run 45297305246](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45297305246); Linux/Windows desktop and iOS/Android mobile runs are being revalidated separately.
 **GPU Present / full six-platform end-to-end benchmark:** NOT COMPLETE.
 
 **Web evidence update (2026-11-23 UTC):** [Run 45266653392](https://github.com/tims-SP/rust-gpui-demo/actions/runs/45266653392), commit `ab466b89`, artifact `gpui-web-official-canvas-svelte-solid`: both Svelte and Solid JSON files report `status=PASS`, `scheduled_updates=120`, `applied_updates=120`, with 34/35 render callbacks and screenshot PNGs. These are GPUI timer-driven replay callback timings, **not** live Hermes HBC/JSI or GPU Present timings. Chromium console reports a wgpu resize poll timeout warning, but the replay completion markers and metrics were emitted.
