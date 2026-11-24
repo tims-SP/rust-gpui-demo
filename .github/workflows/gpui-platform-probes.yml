@@ -516,16 +516,16 @@ jobs:
             --package "system-images;android-35;google_apis;arm64-v8a"
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           export ANDROID_I_WANT_MY_TCG=yes
-          # TCG cannot use gic-version=host (that requires KVM). The second
-          # -machine option merges with the launcher's machine properties and
-          # overrides only the GIC selection, keeping the Android machine type.
+          # This ARM64 runner has no KVM. The Android emulator otherwise
+          # defaults to host CPU/GIC passthrough, which cannot run under TCG.
+          # Override both KVM-only defaults with GICv3 and QEMU's max CPU model.
           "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
             -accel off -gpu swiftshader_indirect -no-snapshot-load -no-snapshot-save -no-metrics \
-            -qemu -machine gic-version=3 \
+            -qemu -machine gic-version=3 -cpu max \
             > results-android-emulator.log 2>&1 &
           emulator_pid=$!
           echo "$emulator_pid" > /tmp/gpui-live-emulator.pid
-          echo "ANDROID_EMULATOR_GIC_VERSION=3 (TCG-compatible)"
+          echo "ANDROID_EMULATOR_GIC_VERSION=3 CPU_MODEL=max (TCG-compatible)"
 
           print_startup_diagnostics() {
             echo "--- Android emulator process tree ---"
@@ -549,8 +549,8 @@ jobs:
               print_startup_diagnostics
               exit 1
             fi
-            if grep -Fq "gic-version=host requires KVM" results-android-emulator.log; then
-              echo "QEMU still selected the KVM-only GIC mode despite the TCG override"
+            if grep -Eq "gic-version=host requires KVM|The 'host' CPU type can only be used with KVM" results-android-emulator.log; then
+              echo "QEMU still selected a KVM-only CPU/GIC mode despite the TCG overrides"
               print_startup_diagnostics
               exit 1
             fi
@@ -573,8 +573,8 @@ jobs:
               print_startup_diagnostics
               exit 1
             fi
-            if grep -Fq "gic-version=host requires KVM" results-android-emulator.log; then
-              echo "Android QEMU selected a KVM-only GIC mode under TCG"
+            if grep -Eq "gic-version=host requires KVM|The 'host' CPU type can only be used with KVM" results-android-emulator.log; then
+              echo "Android QEMU selected a KVM-only CPU/GIC mode under TCG"
               print_startup_diagnostics
               exit 1
             fi
@@ -625,6 +625,7 @@ jobs:
               "guest_abi": guest_abi,
               "cpu_acceleration": "qemu-tcg-software",
               "gic_version": 3,
+              "cpu_model": "max",
               "kvm_available": pathlib.Path("/dev/kvm").exists(),
               "qemu_pid": int(qemu_pid),
               "emulator_package": "Changqing-JING/android-emulator-aarch64-linux@v2.12.0-19097-g85fa07f04ef",
