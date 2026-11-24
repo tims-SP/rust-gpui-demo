@@ -128,7 +128,7 @@ fn main(){
         cx.spawn(async move|async_cx|{
             executor.timer(Duration::from_millis(300)).await;
             stats.borrow_mut().driver_start=Some(Instant::now());
-            for update_index in 0..120 {
+            for _update_index in 0..120 {
                 executor.timer(Duration::from_millis(16)).await;
                 let pending={
                     let mut engine=runtime.borrow_mut();
@@ -165,7 +165,7 @@ fn main(){
                     assert!(
                         observed,
                         "macOS GPUI did not render live Hermes update {} within 1 second",
-                        update_index + 1,
+                        _update_index + 1,
                     );
                 }
             }
