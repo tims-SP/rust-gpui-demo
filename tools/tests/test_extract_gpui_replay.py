@@ -47,6 +47,17 @@ class TestExtract(unittest.TestCase):
             hermes_mutation_batches=127,
             gpu_present_latency_ms=None, end_to_end_latency_ms=None)
         self.assertTrue(mod.extract(live, "svelte")["live_jsi_to_gpui"])
+    def test_valid_mobile_live_hbc_jsi_record(self):
+        live = log(
+            source="live-Hermes-HBC-in-process",
+            driver="gpui-mobile-timer-repeated-framework-click-hbc",
+            metric="jsi_mutation_to_render_callback_us_NOT_GPU_present",
+            live_jsi_to_gpui=True, live_hermes_vm=True,
+            initial_hermes_mutation_batches=7,
+            interactive_hermes_mutation_batches=120,
+            hermes_mutation_batches=127,
+            gpu_present_latency_ms=None, end_to_end_latency_ms=None)
+        self.assertTrue(mod.extract(live, "svelte")["live_jsi_to_gpui"])
     def test_live_record_requires_mutation_batches(self):
         live = log(
             source="live-Hermes-HBC-in-process",

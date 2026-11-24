@@ -31,7 +31,10 @@ def extract(raw: str, framework: str) -> dict:
         if data.get("metric") != "notify_to_render_callback_us_NOT_GPU_present":
             raise ValueError("replay run metric does not end at the Render callback")
     if live:
-        if data.get("driver") != "gpui-timer-repeated-framework-click-hbc":
+        if data.get("driver") not in (
+            "gpui-timer-repeated-framework-click-hbc",
+            "gpui-mobile-timer-repeated-framework-click-hbc",
+        ):
             raise ValueError("live run did not use repeated framework HBC events")
         if data.get("metric") != "jsi_mutation_to_render_callback_us_NOT_GPU_present":
             raise ValueError("live run metric does not end at the JSI-to-Render boundary")
@@ -58,7 +61,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", required=True, type=Path)
     parser.add_argument("--framework", choices=("svelte", "solid"), required=True)
-    parser.add_argument("--platform", choices=("linux", "windows", "macos"), required=True)
+    parser.add_argument("--platform", choices=("linux", "windows", "macos", "ios", "android"), required=True)
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     metrics = extract(args.log.read_text(encoding="utf-8"), args.framework)
