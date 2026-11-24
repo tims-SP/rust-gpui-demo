@@ -447,9 +447,13 @@ jobs:
           # Use a SHA-pinned community emulator and Ubuntu's native AArch64 adb.
           sudo apt-get install -y adb libpulse0 libpcre2-16-0 unzip
           export PATH="/usr/bin:$PATH"
-          test "$(command -v adb)" = /usr/bin/adb
-          file /usr/bin/adb | grep -q 'ARM aarch64'
-          adb version
+          adb_path="$(command -v adb)"
+          echo "ADB_PATH=$adb_path"
+          test -x /usr/bin/adb
+          adb_package_arch="$(dpkg-query -W -f='${Architecture}' adb)"
+          echo "ADB_PACKAGE_ARCH=$adb_package_arch"
+          test "$adb_package_arch" = arm64
+          /usr/bin/adb version
           set +o pipefail
           yes | sdkmanager --licenses
           license_status=${PIPESTATUS[1]}
