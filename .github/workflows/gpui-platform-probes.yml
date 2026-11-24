@@ -6,10 +6,19 @@ on:
   workflow_dispatch:
     inputs:
       live_mobile_hermes:
-        description: "Run real Hermes HBC/JSI in GPUI Mobile iOS Simulator and Android ARM64 emulator"
+        description: "Run real Hermes HBC/JSI in GPUI Mobile iOS Simulator and/or Android ARM64 emulator"
         type: boolean
         required: false
         default: false
+      live_mobile_target:
+        description: "Which mobile target to execute when live_mobile_hermes is enabled"
+        type: choice
+        options:
+          - both
+          - ios
+          - android
+        required: false
+        default: both
 permissions:
   contents: read
   actions: read
@@ -153,7 +162,7 @@ jobs:
           retention-days: 14
 
   ios-live-hermes-window:
-    if: ${{ inputs.live_mobile_hermes }}
+    if: ${{ inputs.live_mobile_hermes && inputs.live_mobile_target != 'android' }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -261,7 +270,7 @@ jobs:
           retention-days: 14
 
   android-live-hermes-window:
-    if: ${{ inputs.live_mobile_hermes }}
+    if: ${{ inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios' }}
     runs-on: macos-15
     timeout-minutes: 120
     steps:
