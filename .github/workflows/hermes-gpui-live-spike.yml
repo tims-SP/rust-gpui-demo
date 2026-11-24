@@ -1,4 +1,4 @@
-name: In-process Hermes HBC and JSI host probe
+name: Live Hermes HBC JSI mutation to Rust scene
 on:
   workflow_dispatch:
   push:
@@ -9,7 +9,7 @@ on:
 permissions:
   contents: read
 jobs:
-  in-process-hermes-probe:
+  live-hermes-mutation-bridge:
     runs-on: ubuntu-24.04
     timeout-minutes: 85
     steps:
@@ -22,7 +22,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y clang cmake ninja-build libicu-dev pkg-config
       - name: Resolve a reproducible dependency lock
         run: cargo generate-lockfile --manifest-path crates/hermes-gpui-spike/Cargo.toml
-      - name: Execute HBC in the embedded Hermes runtime and call a stock JSI host function
+      - name: Execute HBC and deliver its dynamic mutation batch through JSI into Rust
         run: |
           mkdir -p results/gpui-hermes-spike
           cargo run --locked --manifest-path crates/hermes-gpui-spike/Cargo.toml --release \
@@ -30,7 +30,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: in-process-hermes-hbc-jsi-probe
+          name: live-hermes-jsi-rust-mutation-evidence
           path: |
             crates/hermes-gpui-spike/Cargo.lock
             crates/hermes-gpui-spike/target/gpui-live-probe.hbc
