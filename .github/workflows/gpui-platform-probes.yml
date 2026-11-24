@@ -428,7 +428,7 @@ jobs:
           retention-days: 14
 
   android-live-hermes-window:
-    name: android-live-hermes-arm64-guest-tcg-window
+    name: android-live-hermes-arm64-native-bridge-window
     needs: android-live-hermes-arm64-build
     if: ${{ !cancelled() && (needs.android-live-hermes-arm64-build.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.android_apk_artifact_run_id != '')) && ((inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')))}}
     runs-on: ubuntu-24.04
@@ -455,8 +455,8 @@ jobs:
           "$image_venv/bin/python" -m pip install --disable-pip-version-check Pillow
           echo "GPUI_IMAGE_PYTHON=$image_venv/bin/python" >> "$GITHUB_ENV"
           "$image_venv/bin/python" -c 'import PIL; print(f"Pillow {PIL.__version__}")'
-      - name: Install official x86_64 Android Emulator and ARM64 guest image
-        timeout-minutes: 25
+      - name: Install pinned x86_64 Emulator and ARM64 Native Bridge image
+        timeout-minutes: 30
         shell: bash
         run: |
           set -euo pipefail
@@ -473,42 +473,67 @@ jobs:
           license_status=$?
           set -o pipefail
           test "$license_status" -eq 0
-          # Official x86_64 emulator host binary, ARM64 Android guest ABI.
-          # Host and guest differ, so execution is software TCG, not KVM.
+
+          # Android 11+ Google APIs x86_64 images include ARM64 Native Bridge.
+          # The Android OS is x86_64; only the application's ARM64 native code
+          # is translated. This is not a native ARM64 kernel/emulator run.
           sdkmanager --install \
             "emulator" \
             "platforms;android-35" \
-            "system-images;android-35;google_apis;arm64-v8a"
+            "system-images;android-35;google_apis;x86_64"
+
+          emulator_zip="$RUNNER_TEMP/emulator-linux_x64-16740729.zip"
+          emulator_url="https://dl.google.com/android/repository/emulator-linux_x64-16740729.zip"
+          emulator_sha256="cbc7c3cfb83220b8a0f9c513fdab557712e74d339ec19ddffa43f23350ae9bdd"
+          curl --fail --location --retry 3 "$emulator_url" --output "$emulator_zip"
+          echo "$emulator_sha256  $emulator_zip" | sha256sum --check
+          emulator_unpack="$RUNNER_TEMP/pinned-emulator-37.2.13"
+          mkdir -p "$emulator_unpack"
+          unzip -q "$emulator_zip" -d "$emulator_unpack"
+          source_properties="$emulator_unpack/emulator/source.properties"
+          grep -Fxq "Pkg.Revision=37.2.13" "$source_properties"
+          test -x "$emulator_unpack/emulator/emulator"
+
+          # Keep SDK package registration while pinning the exact executable.
+          cp "$ANDROID_HOME/emulator/package.xml" "$RUNNER_TEMP/emulator-package.xml"
+          rm -rf "$ANDROID_HOME/emulator"
+          mv "$emulator_unpack/emulator" "$ANDROID_HOME/emulator"
+          cp "$RUNNER_TEMP/emulator-package.xml" "$ANDROID_HOME/emulator/package.xml"
+          python3 - "$ANDROID_HOME/emulator/package.xml" <<'PYPKG'
+          import pathlib
+          import sys
+          import xml.etree.ElementTree as ET
+          path = pathlib.Path(sys.argv[1])
+          tree = ET.parse(path)
+          revision = tree.getroot().find(".//revision")
+          if revision is None:
+              raise SystemExit("Android Emulator package.xml has no revision")
+          for key, value in (("major", "37"), ("minor", "2"), ("micro", "13")):
+              node = revision.find(key)
+              if node is None:
+                  raise SystemExit(f"Android Emulator package.xml missing {key}")
+              node.text = value
+          tree.write(path, encoding="utf-8", xml_declaration=True)
+          PYPKG
+
           emulator_bin="$ANDROID_HOME/emulator/emulator"
-          test -x "$emulator_bin"
-          emulator_arch="$(file -b "$emulator_bin")"
-          echo "ANDROID_EMULATOR_HOST_BINARY=$emulator_arch"
-          case "$emulator_arch" in
-            *x86-64*|*x86_64*) ;;
-            *) echo "Expected an x86_64 host emulator binary"; exit 1 ;;
-          esac
-          "$emulator_bin" -version 2>&1 | tee "$GITHUB_WORKSPACE/results/android-live-hermes/emulator-version.txt"
-          qemu_arm_bin="$(find "$ANDROID_HOME/emulator" -type f -name 'qemu-system-aarch64*' -print -quit)"
-          test -n "$qemu_arm_bin"
-          qemu_arch="$(file -b "$qemu_arm_bin")"
-          echo "ANDROID_QEMU_ARM64_GUEST_BINARY=$qemu_arm_bin ($qemu_arch)"
-          case "$qemu_arch" in
-            *x86-64*|*x86_64*) ;;
-            *) echo "Expected an x86_64 QEMU binary for the ARM64 guest"; exit 1 ;;
-          esac
-          printf '%s\n' "$qemu_arm_bin ($qemu_arch)" > "$GITHUB_WORKSPACE/results/android-live-hermes/qemu-binary.txt"
+          emulator_version="$("$emulator_bin" -version 2>&1 | head -n 1)"
+          echo "ANDROID_EMULATOR_VERSION=$emulator_version"
+          [[ "$emulator_version" == *"37.2.13"* ]]
+          file "$emulator_bin" | tee "$GITHUB_WORKSPACE/results/android-live-hermes/emulator-host-binary.txt"
           "$ANDROID_HOME/platform-tools/adb" version
+
           export ANDROID_USER_HOME="$RUNNER_TEMP/gpui-android-user"
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
           mkdir -p "$ANDROID_AVD_HOME"
           echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
-          echo "ANDROID_GUEST_SYSTEM_IMAGE=android-35;google_apis;arm64-v8a"
-          echo "ANDROID_EMULATOR_EXECUTION_MODE=QEMU_TCG_X86_64_HOST_ARM64_GUEST"
           echo "PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_GUEST_SYSTEM_IMAGE=android-35;google_apis;x86_64"
+          echo "ANDROID_APP_NATIVE_ABI=arm64-v8a (Native Bridge translation)"
 
-      - name: Create and boot ARM64 Android guest under x86_64 TCG
-        timeout-minutes: 65
+      - name: Create and boot Android x86_64 guest for ARM64 Native Bridge
+        timeout-minutes: 45
         shell: bash
         run: |
           set -euo pipefail
@@ -516,52 +541,46 @@ jobs:
           test -n "$ANDROID_USER_HOME"
           test -n "$ANDROID_AVD_HOME"
           mkdir -p "$ANDROID_AVD_HOME"
-          printf 'no\n' | avdmanager create avd --force --name gpui-live-arm64 \
-            --package "system-images;android-35;google_apis;arm64-v8a"
-          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+          printf 'no\n' | avdmanager create avd --force --name gpui-x86_64-arm64-bridge \
+            --package "system-images;android-35;google_apis;x86_64"
           avdmanager list avd
-          test -s "$ANDROID_AVD_HOME/gpui-live-arm64.ini"
-          test -d "$ANDROID_AVD_HOME/gpui-live-arm64.avd"
+          test -s "$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.ini"
+          test -d "$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.avd"
+
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           export ANDROID_I_WANT_MY_TCG=yes
-          "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
-            -accel off -gpu swiftshader_indirect -cores 1 \
+          "$emulator_bin" -avd gpui-x86_64-arm64-bridge -no-window -no-audio -no-boot-anim \
+            -accel off -gpu swiftshader_indirect -cores 2 \
             -no-snapshot -no-snapshot-load -no-snapshot-save -no-metrics \
-            -qemu -machine gic-version=3 -cpu max \
             > results-android-emulator.log 2>&1 &
           emulator_pid=$!
           echo "$emulator_pid" > /tmp/gpui-live-emulator.pid
-          echo "ANDROID_TCG_CONFIG=host-x86_64 guest-arm64-v8a cpu=max gic=v3"
+          echo "ANDROID_EXECUTION_MODE=TCG_X86_64_GUEST_ARM64_NATIVE_BRIDGE"
 
           print_startup_diagnostics() {
             echo "--- emulator/QEMU process tree ---"
-            ps -eo pid,ppid,stat,etime,pcpu,pmem,args | grep -E '[e]mulator|[q]emu-system-aarch64' || true
+            ps -eo pid,ppid,stat,etime,pcpu,pmem,args | grep -E '[e]mulator|[q]emu-system-x86_64' || true
             echo "--- ADB devices ---"
             timeout 10s adb devices -l || true
             echo "--- Android boot properties ---"
             timeout 10s adb shell getprop sys.boot_completed || true
-            echo "--- Emulator/QEMU log ---"
+            echo "--- Emulator log ---"
             cat results-android-emulator.log || true
-          }
-
-          find_qemu_pid() {
-            pgrep -f '[q]emu-system-aarch64' | head -n 1 || true
           }
 
           qemu_pid=""
           for tick in $(seq 1 45); do
-            qemu_pid="$(find_qemu_pid)"
+            qemu_pid="$(pgrep -f '[q]emu-system-x86_64' | head -n 1 || true)"
             if [[ -n "$qemu_pid" ]]; then break; fi
             if ! kill -0 "$emulator_pid" 2>/dev/null; then
-              echo "Android Emulator exited before the ARM64 QEMU backend started"
+              echo "Android Emulator exited before the x86_64 QEMU backend started"
               print_startup_diagnostics
               exit 1
             fi
             sleep 1
           done
-
           if [[ -z "$qemu_pid" ]]; then
-            echo "ARM64 QEMU backend was not visible within 45 seconds"
+            echo "x86_64 QEMU backend was not visible within 45 seconds"
             print_startup_diagnostics
             exit 1
           fi
@@ -572,13 +591,13 @@ jobs:
             local state
             state="$(ps -o stat= -p "$qemu_pid" 2>/dev/null | tr -d '[:space:]' || true)"
             if [[ -z "$state" || "$state" == Z* ]]; then
-              echo "ARM64 QEMU backend exited before Android became ready (pid=$qemu_pid state=$state)"
+              echo "x86_64 QEMU backend exited before Android became ready (pid=$qemu_pid state=${state:-missing})"
               print_startup_diagnostics
               exit 1
             fi
           }
 
-          adb_deadline=$((SECONDS + 20 * 60))
+          adb_deadline=$((SECONDS + 15 * 60))
           device_ready=false
           while (( SECONDS < adb_deadline )); do
             if timeout 5s adb get-state 2>/dev/null | grep -qx device; then
@@ -589,12 +608,12 @@ jobs:
             sleep 2
           done
           if [[ "$device_ready" != true ]]; then
-            echo "Timed out after 20 minutes waiting for ARM64 Android ADB device (TCG)"
+            echo "Timed out after 15 minutes waiting for Android ADB device (TCG)"
             print_startup_diagnostics
             exit 1
           fi
 
-          boot_deadline=$((SECONDS + 40 * 60))
+          boot_deadline=$((SECONDS + 25 * 60))
           booted=false
           while (( SECONDS < boot_deadline )); do
             boot_state="$(timeout 7s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
@@ -606,34 +625,46 @@ jobs:
             sleep 2
           done
           if [[ "$booted" != true ]]; then
-            echo "Timed out after 40 minutes waiting for Android sys.boot_completed (TCG)"
+            echo "Timed out after 25 minutes waiting for Android sys.boot_completed (TCG)"
             print_startup_diagnostics
             exit 1
           fi
 
+          abi_list="$(timeout 10s adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
+          native_bridge="$(timeout 10s adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
+          bridge_lib="$(timeout 15s adb shell 'find /system /system_ext /vendor -type f -name "libndk_translation.so" 2>/dev/null | head -n 1' | tr -d '\r' || true)"
           runtime_abi="$(timeout 10s adb shell getprop ro.product.cpu.abi | tr -d '\r')"
           echo "ANDROID_RUNTIME_ABI=$runtime_abi"
-          test "$runtime_abi" = "arm64-v8a"
+          echo "ANDROID_RUNTIME_ABILIST=$abi_list"
+          echo "ANDROID_NATIVE_BRIDGE=$native_bridge"
+          echo "ANDROID_NATIVE_BRIDGE_LIBRARY=$bridge_lib"
+          [[ ",$abi_list," == *",arm64-v8a,"* ]]
+          test -n "$native_bridge"
+          [[ "$native_bridge" != "0" && "$native_bridge" != "none" ]]
+          test -n "$bridge_lib"
+          echo GPUI_ANDROID_ARM64_NATIVE_BRIDGE_READY
           mkdir -p "$GITHUB_WORKSPACE/results/android-live-hermes"
-          python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/runtime-environment.json" "$runtime_abi" "$qemu_pid" <<'PYENV'
+          python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/runtime-environment.json" "$abi_list" "$native_bridge" "$bridge_lib" "$qemu_pid" <<'PYENV'
           import json, platform, sys
-          out, guest_abi, qemu_pid = sys.argv[1:]
+          out, abi_list, native_bridge, bridge_lib, qemu_pid = sys.argv[1:]
           json.dump({
               "host_arch": platform.machine(),
-              "emulator_host_arch": "x86_64",
-              "guest_abi": guest_abi,
+              "android_guest_arch": "x86_64",
               "cpu_acceleration": "qemu-tcg-software",
-              "gic_version": 3,
-              "cpu_model": "max",
               "kvm_available": False,
-              "qemu_pid": int(qemu_pid),
-              "emulator_distribution": "official Android SDK Linux x86_64",
-              "system_image": "android-35;google_apis;arm64-v8a"
+              "application_native_abi": "arm64-v8a",
+              "android_supported_abis": abi_list,
+              "native_bridge": native_bridge,
+              "native_bridge_library": bridge_lib,
+              "emulator_version": "37.2.13",
+              "system_image": "android-35;google_apis;x86_64",
+              "qemu_pid": int(qemu_pid)
           }, open(out, "w"), indent=2)
-          print("ANDROID_ARM64_TCG_RUNTIME_ENVIRONMENT_RECORDED")
+          print("ANDROID_ARM64_NATIVE_BRIDGE_RUNTIME_RECORDED")
           PYENV
           adb shell input keyevent 82 || true
-      - name: Install and run Svelte and Solid on Android ARM64 emulator
+      - name: Install and run ARM64 APKs via Android Native Bridge on x86_64 emulator
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -644,13 +675,14 @@ jobs:
             apk="$GITHUB_WORKSPACE/results/android-live-hermes/$framework.apk"
             test -s "$apk"
             adb uninstall dev.gpui.mobile.example >/dev/null 2>&1 || true
-            adb install "$apk"
+            adb install --abi arm64-v8a "$apk"
+            adb shell dumpsys package dev.gpui.mobile.example | grep -F "primaryCpuAbi=arm64-v8a"
             adb logcat -c
             adb logcat -v time -s gpui-mobile-example:I > "$out/$framework-runtime.log" 2>&1 &
             logpid=$!
             adb shell am start -n dev.gpui.mobile.example/dev.gpui.mobile.GpuiActivity
             passed=false
-            for tick in $(seq 1 90); do
+            for tick in $(seq 1 300); do
               if grep -q "GPUI_LIVE_HERMES_PASS:$framework" "$out/$framework-runtime.log"; then passed=true; break; fi
               sleep 1
             done
@@ -668,7 +700,7 @@ jobs:
             kill "$logpid" 2>/dev/null || true
             adb shell am force-stop dev.gpui.mobile.example
           done
-          echo GPUI_ANDROID_ARM64_TCG_LIVE_HERMES_TWO_FRAMEWORKS_PASS
+          echo GPUI_ANDROID_ARM64_NATIVE_BRIDGE_LIVE_HERMES_TWO_FRAMEWORKS_PASS
       - if: always()
         shell: bash
         run: |
@@ -693,7 +725,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gpui-android-arm64-tcg-live-hermes-svelte-solid-evidence
+          name: gpui-android-arm64-native-bridge-live-hermes-svelte-solid-evidence
           path: |
             results/android-live-hermes/
             results-android-emulator.log
