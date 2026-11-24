@@ -93,7 +93,7 @@ fn main(){
         let bounds=Bounds::centered(None,size(px(1000.),px(880.)),cx);
         let entity=cx.new(|_|state);
         let visible_entity=entity.clone();
-        cx.open_window(WindowOptions{
+        let window_handle=cx.open_window(WindowOptions{
             window_bounds:Some(WindowBounds::Windowed(bounds)),..Default::default()
         },move|_,_|visible_entity).expect("Native GPUI window creation failed");
         cx.activate(true);
@@ -105,7 +105,7 @@ fn main(){
             stats.borrow_mut().driver_start=Some(Instant::now());
             for idx in 0..120 {
                 executor.timer(Duration::from_millis(16)).await;
-                entity.update(async_cx, |view, cx|{
+                window_handle.update(async_cx, |view, window, cx|{
                     {
                         let mut s=view.stats.borrow_mut();
                         s.ui_updates+=1;
@@ -115,12 +115,10 @@ fn main(){
                     if idx%15==0 { view.theme=if view.theme=="dark"{"light"}else{"dark"}.to_owned(); }
                     view.rows.rotate_left(1);
                     cx.notify();
-                });
-                // AsyncApp::refresh flushes the queued refresh effect immediately.
-                // Calling Context::refresh_windows inside entity.update can leave the
-                // effect queued while the macOS virtual display loop is parked.
-                #[cfg(target_os = "macos")]
-                async_cx.refresh();
+                    // Update the actual root window and mark it dirty in the same
+                    // window transaction; do not rely only on a deferred entity effect.
+                    window.refresh();
+                }).expect("update GPUI root window during replay");
             }
             executor.timer(Duration::from_millis(250)).await;
             let measured=stats.borrow();
