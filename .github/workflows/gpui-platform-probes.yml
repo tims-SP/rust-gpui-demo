@@ -194,7 +194,26 @@ jobs:
           project = Path('.gpui-mobile/example/ios/project.yml')
           text = project.read_text()
           old = 'cargo build --lib --target "${RUST_TARGET}" ${CARGO_FLAGS}'
-          new = 'cargo build --lib --features live-hermes --target "${RUST_TARGET}" ${CARGO_FLAGS}'
+          cargo = 'cargo build --lib --features live-hermes --target "${RUST_TARGET}" ${CARGO_FLAGS}'
+          new = '''export CARGO_TARGET_DIR="${RUST_PROJECT_DIR}/target"
+          ''' + cargo + '''
+          if [ "${CONFIGURATION}" = "Release" ]; then CARGO_PROFILE_DIR=release; else CARGO_PROFILE_DIR=debug; fi
+          EXPECTED_STATIC_LIB="${CARGO_TARGET_DIR}/${RUST_TARGET}/${CARGO_PROFILE_DIR}/libgpui_mobile_example.a"
+          if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then
+            FOUND_STATIC_LIB="$(find "${CARGO_TARGET_DIR}" -type f -name libgpui_mobile_example.a -print -quit)"
+            if [ -n "${FOUND_STATIC_LIB}" ]; then
+              mkdir -p "$(dirname "${EXPECTED_STATIC_LIB}")"
+              cp "${FOUND_STATIC_LIB}" "${EXPECTED_STATIC_LIB}"
+            fi
+          fi
+          if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then
+            echo "ERROR: Cargo completed but iOS static library is missing: ${EXPECTED_STATIC_LIB}"
+            echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
+            find "${CARGO_TARGET_DIR}" -type f -name '*.a' -print | head -100 || true
+            exit 1
+          fi
+          echo "IOS_RUST_STATIC_LIBRARY_PASS:${EXPECTED_STATIC_LIB}"
+          ls -lh "${EXPECTED_STATIC_LIB}"'''
           if new not in text:
               if old not in text:
                   raise SystemExit('Could not locate the GPUI Mobile iOS Rust build command')
@@ -217,7 +236,16 @@ jobs:
           udid="$(python3 -c 'import json; d=json.load(open("'"$out/devices.json"'")); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))' )"
           test -n "$udid"
           xcrun simctl boot "$udid" 2>/dev/null || true
-          xcrun simctl bootstatus "$udid" -b
+          python3 - "$udid" <<'PYBOOT'
+          import subprocess, sys
+          udid = sys.argv[1]
+          try:
+              subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"],
+                             check=True, timeout=300)
+          except subprocess.TimeoutExpired:
+              subprocess.run(["xcrun", "simctl", "list", "devices", "booted"], check=False)
+              raise SystemExit("iOS Simulator bootstatus timed out after 300 seconds")
+          PYBOOT
           cd "$example/ios"
           xcodegen generate
           for framework in svelte solid; do
@@ -225,7 +253,7 @@ jobs:
             export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
             export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
             export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
-            rm -rf "$example/target/aarch64-apple-ios-sim"
+            echo "Reusing Cargo target cache: $example/target/aarch64-apple-ios-sim"
             derived="$GITHUB_WORKSPACE/.derived-ios-$framework"
             rm -rf "$derived"
             set -o pipefail
@@ -359,13 +387,53 @@ jobs:
           "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
             -accel off -gpu swiftshader_indirect -no-snapshot-save > results-android-emulator.log 2>&1 &
           echo $! > /tmp/gpui-live-emulator.pid
-          adb wait-for-device
-          for tick in $(seq 1 240); do
-            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-            [[ "$booted" == "1" ]] && break
+          # Bound ADB discovery: adb wait-for-device can otherwise block forever.
+          device_ready=false
+          for tick in $(seq 1 120); do
+            if adb get-state 2>/dev/null | grep -qx device; then
+              device_ready=true
+              break
+            fi
+            if ! kill -0 "$(cat /tmp/gpui-live-emulator.pid)" 2>/dev/null; then
+              echo "Android emulator process exited before ADB became ready"
+              cat results-android-emulator.log
+              exit 1
+            fi
             sleep 2
           done
-          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]
+          if [[ "$device_ready" != true ]]; then
+            echo "Timed out waiting 240 seconds for Android ADB device"
+            adb devices -l || true
+            cat results-android-emulator.log
+            exit 1
+          fi
+          booted=false
+          for tick in $(seq 1 240); do
+            boot_state="$(python3 - <<'PYADB'
+          import subprocess
+          try:
+              p = subprocess.run(["adb", "shell", "getprop", "sys.boot_completed"],
+                                 capture_output=True, text=True, timeout=8)
+              print(p.stdout.strip())
+          except subprocess.TimeoutExpired:
+              print("adb-command-timeout")
+          PYADB
+          )"
+            if [[ "$boot_state" == "1" ]]; then booted=true; break; fi
+            if ! kill -0 "$(cat /tmp/gpui-live-emulator.pid)" 2>/dev/null; then
+              echo "Android emulator exited during boot"
+              cat results-android-emulator.log
+              exit 1
+            fi
+            sleep 2
+          done
+          if [[ "$booted" != true ]]; then
+            echo "Timed out waiting 480 seconds for Android sys.boot_completed"
+            adb devices -l || true
+            adb logcat -d -t 300 || true
+            cat results-android-emulator.log
+            exit 1
+          fi
           adb shell input keyevent 82 || true
       - name: Build, install and run live Hermes on Android ARM64 emulator
         shell: bash
@@ -381,7 +449,7 @@ jobs:
             export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
             export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
             export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
-            rm -rf target/aarch64-linux-android
+            echo "Reusing Cargo target cache: $example/target/aarch64-linux-android"
             rm -rf android/gradle/app/src/main/jniLibs/arm64-v8a
             cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs \
               build --lib --features live-hermes
@@ -444,3 +512,5 @@ jobs:
             results/android-live-hermes/
             results-android-emulator.log
           retention-days: 14
+
+[executed on device: racknerd-cd91d33 (1e95fde8-1f7f-4f1a-8070-affab7ba2de9)]
