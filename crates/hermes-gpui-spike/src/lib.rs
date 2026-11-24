@@ -100,6 +100,9 @@ unsafe extern "C" fn apply_mutation_batch(
     length: usize,
 ) -> i32 {
     if user_data.is_null() || payload.is_null() { return 1; }
+    // Start timing at the Rust JSI callback boundary, before JSON decoding or
+    // Scene application, so the later GPUI Render sample includes bridge work.
+    let callback_started_at = Instant::now();
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         let state = &mut *(user_data as *mut MutationState);
         let bytes = std::slice::from_raw_parts(payload, length);
@@ -107,7 +110,7 @@ unsafe extern "C" fn apply_mutation_batch(
         let batch = parsed.as_array().ok_or_else(|| "mutation payload must be an array".to_string())?;
         state.scene.apply_batch(batch)?;
         state.batches += 1;
-        state.pending_at = Some(Instant::now());
+        state.pending_at = Some(callback_started_at);
         Ok::<(), String>(())
     }));
     match outcome {
