@@ -12,6 +12,7 @@ on:
         default: false
 permissions:
   contents: read
+  actions: read
 jobs:
   desktop-gpui-compile:
     if: ${{ !inputs.live_mobile_hermes }}
@@ -388,6 +389,7 @@ jobs:
       - if: always()
         shell: bash
         run: |
+          mkdir -p results/android-live-hermes
           adb logcat -d -s gpui-mobile-example:I > results/android-live-hermes/final-logcat.txt 2>&1 || true
           if [ -f /tmp/gpui-live-emulator.pid ]; then kill "$(cat /tmp/gpui-live-emulator.pid)" 2>/dev/null || true; fi
       - uses: actions/upload-artifact@v4
