@@ -499,29 +499,32 @@ jobs:
           rm -rf "$ANDROID_HOME/emulator"
           mv "$emulator_unpack/emulator" "$ANDROID_HOME/emulator"
           cp "$RUNNER_TEMP/emulator-package.xml" "$ANDROID_HOME/emulator/package.xml"
-          python3 - "$ANDROID_HOME/emulator/package.xml" <<'PYPKG'
-          import pathlib
-          import sys
-          import xml.etree.ElementTree as ET
-          path = pathlib.Path(sys.argv[1])
-          tree = ET.parse(path)
-          revision = tree.getroot().find(".//revision")
-          if revision is None:
-              raise SystemExit("Android Emulator package.xml has no revision")
-          for key, value in (("major", "37"), ("minor", "2"), ("micro", "13")):
-              node = revision.find(key)
-              if node is None:
-                  raise SystemExit(f"Android Emulator package.xml missing {key}")
-              node.text = value
-          tree.write(path, encoding="utf-8", xml_declaration=True)
-          PYPKG
+          # Keep the valid SDK Manager package.xml intact. Re-serializing it
+          # with Python ElementTree changes the Android SDK package metadata;
+          # avdmanager then treats the emulator package as uninstalled.
+          # The pinned executable is verified independently via version + SHA.
+
 
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           emulator_version="$("$emulator_bin" -version 2>&1 | head -n 1)"
           echo "ANDROID_EMULATOR_VERSION=$emulator_version"
           [[ "$emulator_version" == *"37.2.13"* ]]
           file "$emulator_bin" | tee "$GITHUB_WORKSPACE/results/android-live-hermes/emulator-host-binary.txt"
+          sha256sum "$emulator_bin" | tee "$GITHUB_WORKSPACE/results/android-live-hermes/emulator-host-binary.sha256"
           "$ANDROID_HOME/platform-tools/adb" version
+
+          # Fail here, before AVD creation, if the pinned binary replacement
+          # damaged SDK package registration again.
+          sdkmanager --list_installed | tee "$GITHUB_WORKSPACE/results/android-live-hermes/sdk-installed-packages.txt"
+          python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/sdk-installed-packages.txt" <<'PYSDK'
+          from pathlib import Path
+          import sys
+          lines = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace").splitlines()
+          installed = [line for line in lines if line.split("|", 1)[0].strip() == "emulator" and "|" in line]
+          if not installed:
+              raise SystemExit("SDK Manager does not recognize the installed emulator package; refusing to create AVD")
+          print("ANDROID_SDK_EMULATOR_PACKAGE_REGISTERED=" + installed[0].strip())
+          PYSDK
 
           export ANDROID_USER_HOME="$RUNNER_TEMP/gpui-android-user"
           export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
