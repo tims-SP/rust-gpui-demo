@@ -680,19 +680,78 @@ jobs:
             adb uninstall dev.gpui.mobile.example >/dev/null 2>&1 || true
             adb install --abi arm64-v8a "$apk"
             adb shell dumpsys package dev.gpui.mobile.example | grep -F "primaryCpuAbi=arm64-v8a"
+            # Capture every Android log buffer. Filtering only the Rust tag can
+            # hide a pre-Rust NativeActivity/linker/Native Bridge crash and leave
+            # an empty log that looks like a missing framework PASS marker.
             adb logcat -c
-            adb logcat -v time -s gpui-mobile-example:I > "$out/$framework-runtime.log" 2>&1 &
+            adb logcat -b all -v threadtime > "$out/$framework-runtime.log" 2>&1 &
             logpid=$!
-            adb shell am start -n dev.gpui.mobile.example/dev.gpui.mobile.GpuiActivity
+
+            collect_android_runtime_diagnostics() {
+              local prefix="$out/$framework"
+              timeout 20s adb logcat -d -b all -v threadtime > "$prefix-logcat-full.txt" 2>&1 || true
+              timeout 15s adb logcat -b crash -d -v threadtime > "$prefix-logcat-crash.txt" 2>&1 || true
+              timeout 15s adb shell dumpsys activity activities > "$prefix-activity.txt" 2>&1 || true
+              timeout 15s adb shell dumpsys activity top > "$prefix-activity-top.txt" 2>&1 || true
+              timeout 15s adb shell dumpsys package dev.gpui.mobile.example > "$prefix-package.txt" 2>&1 || true
+              timeout 10s adb shell getprop > "$prefix-getprop.txt" 2>&1 || true
+              timeout 10s adb shell ps -A -o USER,PID,PPID,NAME,ARGS > "$prefix-processes.txt" 2>&1 || true
+              timeout 10s adb shell pm path dev.gpui.mobile.example > "$prefix-apk-path.txt" 2>&1 || true
+              local app_pid
+              app_pid="$(timeout 8s adb shell pidof dev.gpui.mobile.example 2>/dev/null | tr -d '\r' | xargs || true)"
+              printf '%s\n' "$app_pid" > "$prefix-app-pid.txt"
+              if [[ -n "$app_pid" ]]; then
+                timeout 10s adb shell cat "/proc/$app_pid/maps" > "$prefix-process-maps.txt" 2>&1 || true
+                grep -E 'libndk_translation|libgpui_mobile|libhermes|linker' "$prefix-process-maps.txt" > "$prefix-native-maps.txt" || true
+              fi
+            }
+
+            if ! timeout 60s adb shell am start -W -n dev.gpui.mobile.example/dev.gpui.mobile.GpuiActivity > "$out/$framework-activity-start.txt" 2>&1; then
+              echo "ANDROID_ACTIVITY_START_FAILED:$framework"
+              collect_android_runtime_diagnostics
+              cat "$out/$framework-activity-start.txt"
+              kill "$logpid" 2>/dev/null || true
+              wait "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+
+            app_pid=""
+            for tick in $(seq 1 30); do
+              app_pid="$(timeout 8s adb shell pidof dev.gpui.mobile.example 2>/dev/null | tr -d '\r' | xargs || true)"
+              if [[ -n "$app_pid" ]]; then break; fi
+              sleep 1
+            done
+            printf '%s\n' "$app_pid" > "$out/$framework-app-pid.txt"
+            if [[ -z "$app_pid" ]]; then
+              echo "ANDROID_APP_PROCESS_NOT_FOUND:$framework"
+              collect_android_runtime_diagnostics
+              kill "$logpid" 2>/dev/null || true
+              wait "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+            timeout 10s adb shell cat "/proc/$app_pid/maps" > "$out/$framework-process-maps.txt" 2>&1 || true
+            grep -E 'libndk_translation|libgpui_mobile|libhermes|linker' "$out/$framework-process-maps.txt" > "$out/$framework-native-maps.txt" || true
+
             passed=false
             for tick in $(seq 1 300); do
               if grep -q "GPUI_LIVE_HERMES_PASS:$framework" "$out/$framework-runtime.log"; then passed=true; break; fi
+              if ! timeout 8s adb shell "test -d /proc/$app_pid" >/dev/null 2>&1; then
+                echo "ANDROID_APP_PROCESS_EXITED_BEFORE_HERMES_PASS:$framework:$app_pid"
+                break
+              fi
               sleep 1
             done
             if [[ "$passed" != true ]]; then
-              adb logcat -d -s gpui-mobile-example:I >> "$out/$framework-runtime.log" 2>&1 || true
-              cat "$out/$framework-runtime.log"
+              echo "ANDROID_LIVE_HERMES_MARKER_MISSING:$framework"
+              collect_android_runtime_diagnostics
+              echo "=== ACTIVITY START ==="
+              cat "$out/$framework-activity-start.txt" 2>/dev/null || true
+              echo "=== APP/BRIDGE DIAGNOSTICS ==="
+              cat "$out/$framework-app-pid.txt" "$out/$framework-native-maps.txt" 2>/dev/null || true
+              echo "=== ANDROID FATAL/LINKER/BRIDGE LOGS ==="
+              grep -Ei 'FATAL EXCEPTION|AndroidRuntime|linker|dlopen|UnsatisfiedLinkError|NativeBridge|native bridge|signal [0-9]|SIGSEGV|SIGABRT|ANativeActivity|android_main|GPUI_LIVE_HERMES|panic|fatal|crash' "$out/$framework-logcat-full.txt" | tail -240 || true
               kill "$logpid" 2>/dev/null || true
+              wait "$logpid" 2>/dev/null || true
               exit 1
             fi
             python3 "$GITHUB_WORKSPACE/tools/extract-gpui-replay.py" \
@@ -712,7 +771,10 @@ jobs:
           if [ -s /tmp/gpui-live-emulator.pid ]; then
             emulator_pid="$(cat /tmp/gpui-live-emulator.pid)"
             if command -v timeout >/dev/null 2>&1 && timeout 5s adb get-state >/dev/null 2>&1; then
-              timeout 12s adb logcat -d -s gpui-mobile-example:I > results/android-live-hermes/final-logcat.txt 2>&1
+              timeout 20s adb logcat -d -b all -v threadtime > results/android-live-hermes/final-logcat-all.txt 2>&1
+              timeout 12s adb logcat -b crash -d -v threadtime > results/android-live-hermes/final-logcat-crash.txt 2>&1
+              timeout 12s adb shell ps -A -o USER,PID,PPID,NAME,ARGS > results/android-live-hermes/final-processes.txt 2>&1
+              timeout 12s adb shell dumpsys activity activities > results/android-live-hermes/final-activity.txt 2>&1
             fi
             if [ -s /tmp/gpui-live-qemu.pid ]; then
               qemu_pid="$(cat /tmp/gpui-live-qemu.pid)"
