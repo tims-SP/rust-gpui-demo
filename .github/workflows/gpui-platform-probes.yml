@@ -302,7 +302,7 @@ jobs:
 
   android-live-hermes-window:
     if: ${{ (inputs.live_mobile_hermes || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench')) && inputs.live_mobile_target != 'ios' }}
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
