@@ -1,6 +1,6 @@
 {
   "schema": "six-platform-benchmark/v1",
-  "generated_at_utc": "2026-11-24T00:18:38Z",
+  "generated_at_utc": "2026-11-24T00:23:01.287Z",
   "repo": "tims-SP/rust-gpui-demo",
   "cells": [
     {
@@ -78,13 +78,13 @@
     {
       "platform": "macos",
       "framework": "svelte",
-      "ci_run_id": 45212271889,
-      "ci_sha": "b6122ea79063f79f4bd55bb1e5b6a99b83b570fc",
+      "ci_run_id": 45293663677,
+      "ci_sha": "615f4c127f89e9cebdb56cb0196abb3a5b1828ce",
       "gpui_render_verified": true,
-      "metric_status": "NOT_MEASURED",
-      "gpui_replay_p50_us": null,
-      "gpui_replay_p95_us": null,
-      "gpui_replay_p99_us": null,
+      "metric_status": "MEASURED",
+      "gpui_replay_p50_us": 10612,
+      "gpui_replay_p95_us": 14406,
+      "gpui_replay_p99_us": 14531,
       "g1_screenshot_readiness_ms": null,
       "g1_screenshot_attempts": null,
       "scene_source": "precomputed-Hermes-JSON",
@@ -96,13 +96,13 @@
     {
       "platform": "macos",
       "framework": "solid",
-      "ci_run_id": 45212271889,
-      "ci_sha": "b6122ea79063f79f4bd55bb1e5b6a99b83b570fc",
+      "ci_run_id": 45293663677,
+      "ci_sha": "615f4c127f89e9cebdb56cb0196abb3a5b1828ce",
       "gpui_render_verified": true,
-      "metric_status": "NOT_MEASURED",
-      "gpui_replay_p50_us": null,
-      "gpui_replay_p95_us": null,
-      "gpui_replay_p99_us": null,
+      "metric_status": "MEASURED",
+      "gpui_replay_p50_us": 10486,
+      "gpui_replay_p95_us": 14671,
+      "gpui_replay_p99_us": 25503,
       "g1_screenshot_readiness_ms": null,
       "g1_screenshot_attempts": null,
       "scene_source": "precomputed-Hermes-JSON",
@@ -236,11 +236,12 @@
       "artifact": "windows-gpui-svelte-solid-real-window-evidence"
     },
     "macos": {
-      "run_id": 45212271889,
-      "sha": "b6122ea79063f79f4bd55bb1e5b6a99b83b570fc",
-      "branch": "main",
-      "created_at": "2026-11-23T16:04:10Z",
-      "artifact": "gpui-macos-svelte-solid-real-window-evidence"
+      "run_id": 45293663677,
+      "sha": "615f4c127f89e9cebdb56cb0196abb3a5b1828ce",
+      "branch": "fix/macos-window-refresh",
+      "created_at": "2026-11-24T00:01:06Z",
+      "artifact": "gpui-macos-svelte-solid-real-window-evidence",
+      "evidence_note": "120/120 real GPUI Render callbacks per framework. Precomputed Hermes scene replay only; no live Hermes VM, JSI, GPU Present, or E2E claim."
     },
     "web": {
       "run_id": 45266653392,
