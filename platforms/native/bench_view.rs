@@ -128,13 +128,20 @@ fn main(){
         cx.spawn(async move|async_cx|{
             executor.timer(Duration::from_millis(300)).await;
             stats.borrow_mut().driver_start=Some(Instant::now());
-            for _ in 0..120 {
+            for update_index in 0..120 {
                 executor.timer(Duration::from_millis(16)).await;
                 let pending={
                     let mut engine=runtime.borrow_mut();
                     engine.eval_hbc(&click_hbc).expect("execute persistent framework click HBC");
                     engine.take_pending_at().expect("JSI gpuiEmit did not deliver a mutation batch")
                 };
+                // A virtual macOS display can coalesce repeated WindowHandle
+                // refreshes while its display-link is idle. Wait for the *new*
+                // pending mutation to be observed in a real Render callback
+                // before issuing the next HBC event. The frame request itself
+                // remains in Render::render, where GPUI permits that API.
+                #[cfg(target_os = "macos")]
+                let expected_samples = stats.borrow().render_lag_us.len() + 1;
                 window_handle.update(async_cx,|view,window,cx|{
                     {
                         let mut measured=view.stats.borrow_mut();
@@ -144,11 +151,23 @@ fn main(){
                     cx.notify();
                     window.refresh();
                 }).expect("update GPUI root window from live Hermes mutation");
-                // `Window::request_animation_frame` is only legal during the
-                // render phases. The Render implementation requests the next
-                // display-link frame; here we only flush the queued app refresh.
                 #[cfg(target_os = "macos")]
-                async_cx.refresh();
+                {
+                    async_cx.refresh();
+                    let mut observed = false;
+                    for _ in 0..250 {
+                        executor.timer(Duration::from_millis(4)).await;
+                        if stats.borrow().render_lag_us.len() >= expected_samples {
+                            observed = true;
+                            break;
+                        }
+                    }
+                    assert!(
+                        observed,
+                        "macOS GPUI did not render live Hermes update {} within 1 second",
+                        update_index + 1,
+                    );
+                }
             }
             executor.timer(Duration::from_millis(250)).await;
             let final_snapshot=runtime.borrow().snapshot().expect("final live scene");

@@ -114,6 +114,23 @@ def main() -> None:
         '        live_hermes::open_main_window(cx);'
     ) in lib:
         raise SystemExit("iOS live window entry point: existing patch is neither original nor expected form")
+    # The upstream Android/iOS window helper is used only by the normal app
+    # entry points. In the live-Hermes feature both entry points switch to
+    # live_hermes::open_main_window, so keep the upstream helper out of that
+    # build to satisfy the repository's `-D warnings` dead-code policy.
+    old_window_cfg = (
+        '#[cfg(any(target_os = "ios", target_os = "android"))]\n'
+        'fn open_main_window(cx: &mut App) {'
+    )
+    new_window_cfg = (
+        '#[cfg(all(any(target_os = "ios", target_os = "android"), not(feature = "live-hermes")))]\n'
+        'fn open_main_window(cx: &mut App) {'
+    )
+    if old_window_cfg in lib:
+        lib = replace_once(lib, old_window_cfg, new_window_cfg, "normal mobile window helper feature gate")
+    elif new_window_cfg not in lib:
+        raise SystemExit("normal mobile window helper: expected upstream cfg was not found")
+
     lib_rs.write_text(lib)
 
     destination = src / "live_hermes.rs"
