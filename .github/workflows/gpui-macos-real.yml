@@ -92,9 +92,7 @@ jobs:
               if ! kill -0 "$pid" 2>/dev/null; then break; fi
               sleep 1
             done
-            python3 tools/extract-gpui-replay.py \\
-              --log "results/macos-gpui/$f-runtime.log" --framework "$f" \\
-              --platform macos --out "results/macos-gpui/$f-metrics.json"
+            python3 tools/extract-gpui-replay.py --log "results/macos-gpui/$f-runtime.log" --framework "$f" --platform macos --out "results/macos-gpui/$f-metrics.json"
             screencapture -x "results/macos-gpui/$f.png"
             python3 platforms/native/verify-macos-image.py "results/macos-gpui/$f.png"
             kill "$pid" 2>/dev/null || true
