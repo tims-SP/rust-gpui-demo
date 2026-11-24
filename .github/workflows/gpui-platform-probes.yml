@@ -403,7 +403,19 @@ jobs:
             rm -rf android/gradle/app/src/main/jniLibs/arm64-v8a
             cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs \
               build --lib --features live-hermes
+            # cargo-ndk stages the Rust .so files, but this project links against
+            # the NDK shared C++ runtime. Because this is an externally-built
+            # JNI library, Gradle does not discover/package libc++_shared.so for us.
+            libcxx_shared="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+            if [[ ! -s "$libcxx_shared" ]]; then
+              echo "ANDROID_NDK_LIBCXX_SHARED_MISSING:$libcxx_shared"
+              find "$ANDROID_NDK_HOME/sysroot/usr/lib" -name libc++_shared.so -print || true
+              exit 1
+            fi
+            install -D -m 0644 "$libcxx_shared" android/gradle/app/src/main/jniLibs/arm64-v8a/libc++_shared.so
             test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libgpui_mobile_example.so
+            test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libc++_shared.so
+            echo ANDROID_ARM64_LIBCXX_SHARED_STAGED
             (
               cd android/gradle
               chmod +x ./gradlew
@@ -414,8 +426,15 @@ jobs:
             python3 - "$apk" <<'PYAPK'
           import sys, zipfile
           with zipfile.ZipFile(sys.argv[1]) as apk:
-              assert "lib/arm64-v8a/libgpui_mobile_example.so" in apk.namelist(), "ARM64 GPUI library missing"
-          print("GPUI_ANDROID_ARM64_APK_PASS")
+              names = set(apk.namelist())
+              required = {
+                  "lib/arm64-v8a/libgpui_mobile_example.so",
+                  "lib/arm64-v8a/libgpui_mobile.so",
+                  "lib/arm64-v8a/libc++_shared.so",
+              }
+              missing = sorted(required - names)
+              assert not missing, f"Required ARM64 native libraries missing from APK: {missing}"
+          print("GPUI_ANDROID_ARM64_APK_NATIVE_DEPENDENCIES_PASS")
           PYAPK
             cp "$apk" "$out/$framework.apk"
           done
@@ -634,7 +653,7 @@ jobs:
             sleep 2
           done
           if [[ "$device_ready" != true ]]; then
-            echo "Timed out after 15 minutes waiting for Android ADB device (TCG)"
+            echo "Timed out after 15 minutes waiting for Android ADB device (KVM)"
             print_startup_diagnostics
             exit 1
           fi
@@ -651,7 +670,7 @@ jobs:
             sleep 2
           done
           if [[ "$booted" != true ]]; then
-            echo "Timed out after 25 minutes waiting for Android sys.boot_completed (TCG)"
+            echo "Timed out after 25 minutes waiting for Android sys.boot_completed (KVM)"
             print_startup_diagnostics
             exit 1
           fi
