@@ -4,10 +4,17 @@ on:
     branches: [main]
     paths: ['.github/workflows/gpui-platform-probes.yml']
   workflow_dispatch:
+    inputs:
+      live_mobile_hermes:
+        description: "Run real Hermes HBC/JSI in GPUI Mobile iOS Simulator and Android ARM64 emulator"
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
 jobs:
   desktop-gpui-compile:
+    if: ${{ !inputs.live_mobile_hermes }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +49,7 @@ jobs:
         shell: bash
         run: echo "GPUI_DESKTOP_COMPILE_PASS:${{ matrix.label }}"
   ios-gpui-compile:
+    if: ${{ !inputs.live_mobile_hermes }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -61,6 +69,7 @@ jobs:
           cargo check -p gpui_ios --target aarch64-apple-ios-sim
           echo GPUI_IOS_BACKEND_COMPILE_PASS
   android-gpui-mobile-compile:
+    if: ${{ !inputs.live_mobile_hermes }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -87,6 +96,7 @@ jobs:
 
 
   android-gpui-mobile-apk:
+    if: ${{ !inputs.live_mobile_hermes }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -139,4 +149,252 @@ jobs:
         with:
           name: gpui-mobile-android-arm64-apk
           path: .gpui-mobile/example/android/gradle/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  ios-live-hermes-window:
+    if: ${{ inputs.live_mobile_hermes }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: live-svelte-solid-hermes-jsi-rust-scene
+          run-id: 45295492997
+          github-token: ${{ github.token }}
+          path: results/live-hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios-sim
+          cache: false
+      - name: Prepare pinned GPUI Mobile example for live Hermes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 platforms/mobile/prepare_live_hermes.py --example .gpui-mobile/example --repo "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          from pathlib import Path
+          project = Path('.gpui-mobile/example/ios/project.yml')
+          text = project.read_text()
+          old = 'cargo build --lib --target "${RUST_TARGET}" ${CARGO_FLAGS}'
+          new = 'cargo build --lib --features live-hermes --target "${RUST_TARGET}" ${CARGO_FLAGS}'
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('Could not locate the GPUI Mobile iOS Rust build command')
+              text = text.replace(old, new, 1)
+          project.write_text(text)
+          PY
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen --version
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-path
+      - name: Build and run live Hermes on iOS Simulator for both frameworks
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/results/ios-live-hermes"
+          hbc="$GITHUB_WORKSPACE/results/live-hermes/crates/hermes-gpui-spike/target"
+          example="$GITHUB_WORKSPACE/.gpui-mobile/example"
+          mkdir -p "$out"
+          xcrun simctl list devices available -j > "$out/devices.json"
+          udid="$(python3 -c 'import json; d=json.load(open("'"$out/devices.json"'")); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))' )"
+          test -n "$udid"
+          xcrun simctl boot "$udid" 2>/dev/null || true
+          xcrun simctl bootstatus "$udid" -b
+          cd "$example/ios"
+          xcodegen generate
+          for framework in svelte solid; do
+            export GPUI_LIVE_HERMES_FRAMEWORK="$framework"
+            export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
+            export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
+            export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
+            rm -rf "$example/target/aarch64-apple-ios-sim"
+            derived="$GITHUB_WORKSPACE/.derived-ios-$framework"
+            rm -rf "$derived"
+            set -o pipefail
+            xcodebuild -project GpuiExample.xcodeproj -scheme GpuiExample \
+              -configuration Debug -destination "id=$udid" \
+              -derivedDataPath "$derived" build 2>&1 | tee "$out/$framework-build.log" | tail -100
+            app="$derived/Build/Products/Debug-iphonesimulator/GpuiExample.app"
+            test -d "$app"
+            xcrun simctl terminate "$udid" dev.gpui.mobile.example >/dev/null 2>&1 || true
+            xcrun simctl install "$udid" "$app"
+            xcrun simctl spawn "$udid" log stream --level info --style compact \
+              --predicate 'process == "GpuiExample"' > "$out/$framework-runtime.log" 2>&1 &
+            logpid=$!
+            xcrun simctl launch "$udid" dev.gpui.mobile.example
+            passed=false
+            for tick in $(seq 1 75); do
+              if grep -q "GPUI_LIVE_HERMES_PASS:$framework" "$out/$framework-runtime.log"; then passed=true; break; fi
+              if ! kill -0 "$logpid" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            if [[ "$passed" != true ]]; then
+              xcrun simctl spawn "$udid" log show --last 3m --style compact \
+                --predicate 'process == "GpuiExample"' >> "$out/$framework-runtime.log" 2>&1 || true
+              cat "$out/$framework-runtime.log"
+              kill "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+            python3 "$GITHUB_WORKSPACE/tools/extract-gpui-replay.py" \
+              --log "$out/$framework-runtime.log" --framework "$framework" \
+              --platform ios --out "$out/$framework-metrics.json"
+            xcrun simctl io "$udid" screenshot "$out/$framework.png"
+            python3 "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
+            kill "$logpid" 2>/dev/null || true
+            xcrun simctl terminate "$udid" dev.gpui.mobile.example >/dev/null 2>&1 || true
+          done
+          echo GPUI_IOS_LIVE_HERMES_TWO_FRAMEWORKS_PASS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-ios-live-hermes-svelte-solid-evidence
+          path: results/ios-live-hermes/
+          retention-days: 14
+
+  android-live-hermes-window:
+    if: ${{ inputs.live_mobile_hermes }}
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: live-svelte-solid-hermes-jsi-rust-scene
+          run-id: 45295492997
+          github-token: ${{ github.token }}
+          path: results/live-hermes
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android
+          cache: false
+      - name: Install Android ARM64 emulator and NDK packages
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" \
+            "emulator" "ndk;27.2.12479018" "system-images;android-35;google_apis;arm64-v8a"
+      - name: Prepare pinned GPUI Mobile example and Gradle mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 platforms/mobile/prepare_live_hermes.py --example .gpui-mobile/example --repo "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }'
+          for relative in ("android/gradle/settings.gradle.kts", "android/gradle/build.gradle.kts"):
+              path = Path(".gpui-mobile/example") / relative
+              content = path.read_text()
+              content = re.sub(r"(?m)^(\s*)mavenCentral\(\)$",
+                               lambda match: match.group(1) + mirror + "\\n" + match.group(1) + "mavenCentral()",
+                               content)
+              path.write_text(content)
+          PY
+          cargo install cargo-ndk --locked
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          test -d "$ANDROID_NDK_HOME"
+          emulator -version
+          adb version
+      - name: Create Android ARM64 emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo no | avdmanager create avd --force --name gpui-live-arm64 \
+            --package "system-images;android-35;google_apis;arm64-v8a"
+          emulator -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
+            -gpu host -no-snapshot-save > results-android-emulator.log 2>&1 &
+          echo $! > /tmp/gpui-live-emulator.pid
+          adb wait-for-device
+          for tick in $(seq 1 240); do
+            booted="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            [[ "$booted" == "1" ]] && break
+            sleep 2
+          done
+          [[ "$(adb shell getprop sys.boot_completed | tr -d '\r')" == "1" ]]
+          adb shell input keyevent 82 || true
+      - name: Build, install and run live Hermes on Android ARM64 emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/results/android-live-hermes"
+          hbc="$GITHUB_WORKSPACE/results/live-hermes/crates/hermes-gpui-spike/target"
+          example="$GITHUB_WORKSPACE/.gpui-mobile/example"
+          mkdir -p "$out"
+          cd "$example"
+          for framework in svelte solid; do
+            export GPUI_LIVE_HERMES_FRAMEWORK="$framework"
+            export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
+            export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
+            export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
+            rm -rf target/aarch64-linux-android
+            rm -rf android/gradle/app/src/main/jniLibs/arm64-v8a
+            cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs \
+              build --lib --features live-hermes
+            test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libgpui_mobile_example.so
+            (
+              cd android/gradle
+              chmod +x ./gradlew
+              ./gradlew :app:assembleDebug --no-daemon --stacktrace
+            )
+            apk="android/gradle/app/build/outputs/apk/debug/app-debug.apk"
+            test -s "$apk"
+            cp "$apk" "$out/$framework.apk"
+            adb uninstall dev.gpui.mobile.example >/dev/null 2>&1 || true
+            adb install "$apk"
+            adb logcat -c
+            adb logcat -v time -s gpui-mobile-example:I > "$out/$framework-runtime.log" 2>&1 &
+            logpid=$!
+            adb shell am start -n dev.gpui.mobile.example/dev.gpui.mobile.GpuiActivity
+            passed=false
+            for tick in $(seq 1 90); do
+              if grep -q "GPUI_LIVE_HERMES_PASS:$framework" "$out/$framework-runtime.log"; then passed=true; break; fi
+              sleep 1
+            done
+            if [[ "$passed" != true ]]; then
+              adb logcat -d -s gpui-mobile-example:I >> "$out/$framework-runtime.log" 2>&1 || true
+              cat "$out/$framework-runtime.log"
+              kill "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+            python3 "$GITHUB_WORKSPACE/tools/extract-gpui-replay.py" \
+              --log "$out/$framework-runtime.log" --framework "$framework" \
+              --platform android --out "$out/$framework-metrics.json"
+            adb exec-out screencap -p > "$out/$framework.png"
+            python3 "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
+            kill "$logpid" 2>/dev/null || true
+            adb shell am force-stop dev.gpui.mobile.example
+          done
+          echo GPUI_ANDROID_ARM64_LIVE_HERMES_TWO_FRAMEWORKS_PASS
+      - if: always()
+        shell: bash
+        run: |
+          adb logcat -d -s gpui-mobile-example:I > results/android-live-hermes/final-logcat.txt 2>&1 || true
+          if [ -f /tmp/gpui-live-emulator.pid ]; then kill "$(cat /tmp/gpui-live-emulator.pid)" 2>/dev/null || true; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-android-arm64-live-hermes-svelte-solid-evidence
+          path: |
+            results/android-live-hermes/
+            results-android-emulator.log
           retention-days: 14
