@@ -326,6 +326,7 @@ jobs:
           target: aarch64-linux-android
           cache: false
       - name: Install Android ARM64 emulator and NDK packages
+        timeout-minutes: 20
         shell: bash
         run: |
           set -euo pipefail
@@ -374,6 +375,7 @@ jobs:
           "$emulator_bin" -version
           adb version
       - name: Create Android ARM64 emulator
+        timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
@@ -382,10 +384,10 @@ jobs:
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           test -x "$emulator_bin"
           # GitHub-hosted macOS VMs do not expose nested HVF acceleration.
-          # Use QEMU software CPU emulation plus SwiftShader rather than failing
-          # at HV_UNSUPPORTED or silently reporting host-GPU timings.
+          # Recent Emulator builds require explicit opt-in to TCG software CPU emulation.
+          export ANDROID_I_WANT_MY_TCG=yes
           "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
-            -accel off -gpu swiftshader_indirect -no-snapshot-save > results-android-emulator.log 2>&1 &
+            -accel off -gpu swiftshader_indirect -no-snapshot-save -no-metrics > results-android-emulator.log 2>&1 &
           echo $! > /tmp/gpui-live-emulator.pid
           # Bound ADB discovery: adb wait-for-device can otherwise block forever.
           device_ready=false
