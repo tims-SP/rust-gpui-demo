@@ -142,8 +142,16 @@ fn main(){
                         measured.pending_at=Some(pending);
                     }
                     cx.notify();
+                    // On macOS virtual displays, marking the root window dirty can
+                    // leave the display-link source parked. Explicitly request the
+                    // next frame in the same window transaction, then flush pending
+                    // async refresh effects before the next HBC event is issued.
+                    #[cfg(target_os = "macos")]
+                    window.request_animation_frame();
                     window.refresh();
                 }).expect("update GPUI root window from live Hermes mutation");
+                #[cfg(target_os = "macos")]
+                async_cx.refresh();
             }
             executor.timer(Duration::from_millis(250)).await;
             let final_snapshot=runtime.borrow().snapshot().expect("final live scene");
