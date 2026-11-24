@@ -106,7 +106,7 @@ jobs:
 
 
   android-gpui-mobile-apk:
-    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
+    if: ${{ !inputs.live_mobile_hermes }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -162,7 +162,7 @@ jobs:
           retention-days: 14
 
   ios-live-hermes-window:
-    if: ${{ (inputs.live_mobile_hermes || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench')) && inputs.live_mobile_target != 'android' }}
+    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'android') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[ios]')) }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -301,8 +301,9 @@ jobs:
           retention-days: 14
 
   android-live-hermes-window:
-    if: ${{ (inputs.live_mobile_hermes || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench')) && inputs.live_mobile_target != 'ios' }}
-    runs-on: macos-15-intel
+    name: android-live-hermes-x86_64-window
+    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -326,9 +327,9 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: aarch64-linux-android
+          target: x86_64-linux-android
           cache: false
-      - name: Install Android ARM64 emulator and NDK packages
+      - name: Install Android x86_64 emulator and NDK packages with KVM
         timeout-minutes: 20
         shell: bash
         run: |
@@ -342,7 +343,17 @@ jobs:
           set -o pipefail
           test "$license_status" -eq 0
           sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" \
-            "emulator" "ndk;27.2.12479018" "system-images;android-35;google_apis;arm64-v8a"
+            "emulator" "ndk;27.2.12479018" "system-images;android-35;google_apis;x86_64"
+          # GitHub-hosted Ubuntu runners expose KVM for Android hardware acceleration.
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM device /dev/kvm is unavailable on this runner"
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           echo "PATH emulator=$(command -v emulator)"
@@ -352,6 +363,7 @@ jobs:
           file "$emulator_bin"
           find "$ANDROID_HOME/emulator/qemu" -maxdepth 3 -type f -name 'qemu-system-*' -print
           "$emulator_bin" -version
+          "$emulator_bin" -accel-check
       - name: Prepare pinned GPUI Mobile example and Gradle mirror
         shell: bash
         run: |
@@ -368,6 +380,13 @@ jobs:
                                lambda match: match.group(1) + mirror + "\n" + match.group(1) + "mavenCentral()",
                                content)
               path.write_text(content)
+          app_gradle = Path(".gpui-mobile/example/android/gradle/app/build.gradle.kts")
+          app_text = app_gradle.read_text()
+          old_abi = 'abiFilters += listOf("arm64-v8a")'
+          new_abi = 'abiFilters += listOf("x86_64")'
+          if old_abi not in app_text:
+              raise SystemExit("Could not find pinned Android arm64 ABI filter to switch for x86_64 runtime test")
+          app_gradle.write_text(app_text.replace(old_abi, new_abi, 1))
           PY
           cargo install cargo-ndk --locked
           export ANDROID_HOME="$ANDROID_SDK_ROOT"
@@ -377,20 +396,19 @@ jobs:
           test -x "$emulator_bin"
           "$emulator_bin" -version
           adb version
-      - name: Create Android ARM64 emulator
+      - name: Create Android x86_64 emulator
         timeout-minutes: 15
         shell: bash
         run: |
           set -euo pipefail
-          echo no | avdmanager create avd --force --name gpui-live-arm64 \
-            --package "system-images;android-35;google_apis;arm64-v8a"
+          echo no | avdmanager create avd --force --name gpui-live-x86_64 \
+            --package "system-images;android-35;google_apis;x86_64"
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           test -x "$emulator_bin"
-          # GitHub-hosted macOS VMs do not expose nested HVF acceleration.
-          # Recent Emulator builds require explicit opt-in to TCG software CPU emulation.
-          export ANDROID_I_WANT_MY_TCG=yes
-          "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
-            -accel off -gpu swiftshader_indirect -no-snapshot-save -no-metrics > results-android-emulator.log 2>&1 &
+          # The x86_64 guest matches the Ubuntu x86_64 host and uses KVM.
+          # SwiftShader provides deterministic software graphics rendering.
+          "$emulator_bin" -avd gpui-live-x86_64 -no-window -no-audio -no-boot-anim \
+            -accel on -gpu swiftshader_indirect -no-snapshot-save -no-metrics > results-android-emulator.log 2>&1 &
           echo $! > /tmp/gpui-live-emulator.pid
           # Bound ADB discovery: adb wait-for-device can otherwise block forever.
           device_ready=false
@@ -439,8 +457,11 @@ jobs:
             cat results-android-emulator.log
             exit 1
           fi
+          runtime_abi="$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
+          echo "ANDROID_RUNTIME_ABI=$runtime_abi"
+          test "$runtime_abi" = "x86_64"
           adb shell input keyevent 82 || true
-      - name: Build, install and run live Hermes on Android ARM64 emulator
+      - name: Build, install and run live Hermes on Android x86_64 emulator
         shell: bash
         run: |
           set -euo pipefail
@@ -454,11 +475,11 @@ jobs:
             export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
             export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
             export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
-            echo "Reusing Cargo target cache: $example/target/aarch64-linux-android"
-            rm -rf android/gradle/app/src/main/jniLibs/arm64-v8a
-            cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs \
+            echo "Reusing Cargo target cache: $example/target/x86_64-linux-android"
+            rm -rf android/gradle/app/src/main/jniLibs/x86_64
+            cargo ndk -t x86_64 -P 31 -o android/gradle/app/src/main/jniLibs \
               build --lib --features live-hermes
-            test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libgpui_mobile_example.so
+            test -s android/gradle/app/src/main/jniLibs/x86_64/libgpui_mobile_example.so
             (
               cd android/gradle
               chmod +x ./gradlew
@@ -466,6 +487,13 @@ jobs:
             )
             apk="android/gradle/app/build/outputs/apk/debug/app-debug.apk"
             test -s "$apk"
+            python3 - "$apk" <<'PYAPK'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              entries = apk.namelist()
+              assert "lib/x86_64/libgpui_mobile_example.so" in entries, "x86_64 GPUI library missing from APK"
+          print("GPUI_ANDROID_X86_64_APK_PASS")
+          PYAPK
             cp "$apk" "$out/$framework.apk"
             adb uninstall dev.gpui.mobile.example >/dev/null 2>&1 || true
             adb install "$apk"
@@ -492,7 +520,7 @@ jobs:
             kill "$logpid" 2>/dev/null || true
             adb shell am force-stop dev.gpui.mobile.example
           done
-          echo GPUI_ANDROID_ARM64_LIVE_HERMES_TWO_FRAMEWORKS_PASS
+          echo GPUI_ANDROID_X86_64_LIVE_HERMES_TWO_FRAMEWORKS_PASS
       - if: always()
         shell: bash
         run: |
@@ -512,7 +540,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: gpui-android-arm64-live-hermes-svelte-solid-evidence
+          name: gpui-android-x86_64-live-hermes-svelte-solid-evidence
           path: |
             results/android-live-hermes/
             results-android-emulator.log
