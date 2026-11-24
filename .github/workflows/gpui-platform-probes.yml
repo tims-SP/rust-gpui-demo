@@ -428,10 +428,10 @@ jobs:
           retention-days: 14
 
   android-live-hermes-window:
-    name: android-live-hermes-arm64-tcg-window
+    name: android-live-hermes-arm64-guest-tcg-window
     needs: android-live-hermes-arm64-build
     if: ${{ !cancelled() && (needs.android-live-hermes-arm64-build.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.android_apk_artifact_run_id != '')) && ((inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')))}}
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
@@ -455,178 +455,91 @@ jobs:
           "$image_venv/bin/python" -m pip install --disable-pip-version-check Pillow
           echo "GPUI_IMAGE_PYTHON=$image_venv/bin/python" >> "$GITHUB_ENV"
           "$image_venv/bin/python" -c 'import PIL; print(f"Pillow {PIL.__version__}")'
-      - name: Install ARM64 Android Emulator, ADB and system image
+      - name: Install official x86_64 Android Emulator and ARM64 guest image
         timeout-minutes: 25
         shell: bash
         run: |
           set -euo pipefail
-          test "$(dpkg --print-architecture)" = arm64
-          export ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test "$(dpkg --print-architecture)" = amd64
           test -n "$ANDROID_HOME"
-          mkdir -p "$ANDROID_HOME"
-          export PATH="/usr/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          mkdir -p "$ANDROID_HOME" "$GITHUB_WORKSPACE/results/android-live-hermes"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           command -v sdkmanager
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          sudo apt-get update
-          # Google's SDK repo has no Linux/AArch64 emulator or platform-tools.
-          # Use a SHA-pinned community emulator and Ubuntu's native AArch64 adb.
-          sudo apt-get install -y adb libpulse0 libpcre2-16-0 unzip
-          export PATH="/usr/bin:$PATH"
-          adb_path="$(command -v adb)"
-          echo "ADB_PATH=$adb_path"
-          test -x /usr/bin/adb
-          adb_package_arch="$(dpkg-query -W -f='${Architecture}' adb)"
-          echo "ADB_PACKAGE_ARCH=$adb_package_arch"
-          test "$adb_package_arch" = arm64
-          /usr/bin/adb version
           set +o pipefail
           yes | sdkmanager --licenses
-          license_status=${PIPESTATUS[1]}
+          license_status=$?
           set -o pipefail
           test "$license_status" -eq 0
-          emulator_zip="$RUNNER_TEMP/android-emulator-aarch64.zip"
-          emulator_url="https://github.com/Changqing-JING/android-emulator-aarch64-linux/releases/download/v2.12.0-19097-g85fa07f04ef/sdk-repo-linux_aarch64-emulator-standalone-0.zip"
-          emulator_sha256="67ce4f576687b067d9b36668405b86b9749745d67d31037616aac12c49c63a65"
-          curl --fail --location --retry 3 "$emulator_url" --output "$emulator_zip"
-          echo "$emulator_sha256  $emulator_zip" | sha256sum --check
-          unzip -q "$emulator_zip" -d "$ANDROID_HOME"
-          cp "$GITHUB_WORKSPACE/platforms/mobile/android-emulator-aarch64-package.xml" "$ANDROID_HOME/emulator/package.xml"
-          chmod +x "$ANDROID_HOME/emulator/emulator" \
-            "$ANDROID_HOME/emulator/qemu/linux-aarch64/qemu-system-aarch64-headless"
-          echo "PATH=/usr/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/emulator:$PATH" >> "$GITHUB_ENV"
-          # Register the locally installed Linux/AArch64 emulator before the
-          # SDK manager resolves the Android 35 ARM64 system image.
-          sdkmanager --install "platforms;android-35" "system-images;android-35;google_apis;arm64-v8a"
-          # GitHub-hosted ARM64 runners do not expose nested KVM. The guest
-          # remains ARM64, but CPU execution uses QEMU TCG (not device-speed).
-          if [ -e /proc/sys/kernel/yama/ptrace_scope ]; then
-            sudo sysctl -w kernel.yama.ptrace_scope=0
-          fi
+          # Official x86_64 emulator host binary, ARM64 Android guest ABI.
+          # Host and guest differ, so execution is software TCG, not KVM.
+          sdkmanager --install \
+            "emulator" \
+            "platforms;android-35" \
+            "system-images;android-35;google_apis;arm64-v8a"
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           test -x "$emulator_bin"
-          "$emulator_bin" -version
-          echo "ANDROID_EMULATOR_CPU_MODE=TCG (no KVM on hosted ARM64 runner)"
-      - name: Patch ARM64 emulator random-seed TLS accesses for TCG
-        timeout-minutes: 5
+          emulator_arch="$(file -b "$emulator_bin")"
+          echo "ANDROID_EMULATOR_HOST_BINARY=$emulator_arch"
+          case "$emulator_arch" in
+            *x86-64*|*x86_64*) ;;
+            *) echo "Expected an x86_64 host emulator binary"; exit 1 ;;
+          esac
+          "$emulator_bin" -version 2>&1 | tee "$GITHUB_WORKSPACE/results/android-live-hermes/emulator-version.txt"
+          qemu_arm_bin="$(find "$ANDROID_HOME/emulator" -type f -name 'qemu-system-aarch64*' -print -quit)"
+          test -n "$qemu_arm_bin"
+          qemu_arch="$(file -b "$qemu_arm_bin")"
+          echo "ANDROID_QEMU_ARM64_GUEST_BINARY=$qemu_arm_bin ($qemu_arch)"
+          case "$qemu_arch" in
+            *x86-64*|*x86_64*) ;;
+            *) echo "Expected an x86_64 QEMU binary for the ARM64 guest"; exit 1 ;;
+          esac
+          printf '%s\n' "$qemu_arm_bin ($qemu_arch)" > "$GITHUB_WORKSPACE/results/android-live-hermes/qemu-binary.txt"
+          "$ANDROID_HOME/platform-tools/adb" version
+          echo "ANDROID_GUEST_SYSTEM_IMAGE=android-35;google_apis;arm64-v8a"
+          echo "ANDROID_EMULATOR_EXECUTION_MODE=QEMU_TCG_X86_64_HOST_ARM64_GUEST"
+          echo "PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH" >> "$GITHUB_ENV"
+
+      - name: Create and boot ARM64 Android guest under x86_64 TCG
+        timeout-minutes: 65
         shell: bash
         run: |
           set -euo pipefail
-          metrics_lib="$ANDROID_HOME/emulator/lib64/libandroid-emu-metrics.so"
-          python3 - "$metrics_lib" <<'PYTLS'
-          import hashlib
-          import pathlib
-          import sys
-
-          path = pathlib.Path(sys.argv[1])
-          data = path.read_bytes()
-          original_sha256 = "7eb64f1740dc5800f66b2422e79251a9de60abcd4cff1567e725f3a3c9ac4068"
-          patched_sha256 = "2e0fb5a295de379b747ae5dab720f020c4d006bb8ea8cd4d6a936b91565168a1"
-
-          # The random seed is one six-byte TLS object: patch its initializer
-          # and both readers together. Changing only the store leaves readers
-          # on the old QEMU current_cpu TLS slot and still crashes at startup.
-          sites = (
-              (
-                  0x1C2A24,
-                  bytes.fromhex("53 d0 3b d5 73 02 40 91 73 a2 00 91"),
-                  bytes.fromhex("53 d0 3b d5 73 02 40 91 73 82 00 91"),
-              ),
-              (
-                  0x1C2B20,
-                  bytes.fromhex("57 d0 3b d5 40 16 80 d2 f8 02 40 91 18 a3 00 91"),
-                  bytes.fromhex("57 d0 3b d5 40 16 80 d2 f8 02 40 91 18 83 00 91"),
-              ),
-              (
-                  0x1C2BC0,
-                  bytes.fromhex("57 d0 3b d5 40 16 80 d2 f3 02 40 91 73 a2 00 91"),
-                  bytes.fromhex("57 d0 3b d5 40 16 80 d2 f3 02 40 91 73 82 00 91"),
-              ),
-          )
-
-          actual_sha256 = hashlib.sha256(data).hexdigest()
-          if actual_sha256 != original_sha256:
-              raise SystemExit(
-                  f"Refusing to patch unexpected libandroid-emu-metrics.so: "
-                  f"sha256={actual_sha256}"
-              )
-
-          patched_data = bytearray(data)
-          for base, original_context, patched_context in sites:
-              if data[base:base + len(original_context)] != original_context:
-                  raise SystemExit(
-                      f"Unexpected AArch64 instructions at file offset 0x{base:x}"
-                  )
-              if len(original_context) != len(patched_context):
-                  raise SystemExit("TLS patch changed instruction block size")
-              patched_data[base:base + len(patched_context)] = patched_context
-
-          actual_patched_sha256 = hashlib.sha256(patched_data).hexdigest()
-          if actual_patched_sha256 != patched_sha256:
-              raise SystemExit(
-                  f"Patched library checksum mismatch: {actual_patched_sha256}"
-              )
-
-          path.write_bytes(patched_data)
-          verified = path.read_bytes()
-          if hashlib.sha256(verified).hexdigest() != patched_sha256:
-              raise SystemExit("On-disk patched library checksum mismatch")
-          for base, _, expected in sites:
-              if verified[base:base + len(expected)] != expected:
-                  raise SystemExit(
-                      f"On-disk TLS instruction verification failed at 0x{base:x}"
-                  )
-
-          print(
-              "GPUI_ANDROID_EMULATOR_TLS_PATCH_PASS:"
-              "seed_write_plus_two_reads:0x28->0x20:sites=3"
-          )
-          print(f"GPUI_ANDROID_EMULATOR_TLS_PATCH_SHA256:{patched_sha256}")
-          PYTLS
-      - name: Create and boot ARM64 Android emulator (TCG)
-        timeout-minutes: 60
-        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="/usr/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/emulator:$PATH"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           echo no | avdmanager create avd --force --name gpui-live-arm64 \
             --package "system-images;android-35;google_apis;arm64-v8a"
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           export ANDROID_I_WANT_MY_TCG=yes
-          # This ARM64 runner has no KVM. The Android emulator otherwise
-          # defaults to host CPU/GIC passthrough, which cannot run under TCG.
-          # Override both KVM-only defaults with GICv3 and QEMU's max CPU model.
           "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
-            -accel off -gpu swiftshader_indirect -no-snapshot-load -no-snapshot-save -no-metrics \
+            -accel off -gpu swiftshader_indirect -cores 1 \
+            -no-snapshot -no-snapshot-load -no-snapshot-save -no-metrics \
             -qemu -machine gic-version=3 -cpu max \
             > results-android-emulator.log 2>&1 &
           emulator_pid=$!
           echo "$emulator_pid" > /tmp/gpui-live-emulator.pid
-          echo "ANDROID_EMULATOR_GIC_VERSION=3 CPU_MODEL=max (TCG-compatible)"
+          echo "ANDROID_TCG_CONFIG=host-x86_64 guest-arm64-v8a cpu=max gic=v3"
 
           print_startup_diagnostics() {
-            echo "--- Android emulator process tree ---"
+            echo "--- emulator/QEMU process tree ---"
             ps -eo pid,ppid,stat,etime,pcpu,pmem,args | grep -E '[e]mulator|[q]emu-system-aarch64' || true
             echo "--- ADB devices ---"
             timeout 10s adb devices -l || true
-            echo "--- Recent Android logcat ---"
-            timeout 12s adb logcat -d -t 300 || true
+            echo "--- Android boot properties ---"
+            timeout 10s adb shell getprop sys.boot_completed || true
             echo "--- Emulator/QEMU log ---"
             cat results-android-emulator.log || true
           }
 
+          find_qemu_pid() {
+            pgrep -f '[q]emu-system-aarch64' | head -n 1 || true
+          }
+
           qemu_pid=""
-          for tick in $(seq 1 30); do
-            qemu_pid="$(pgrep -f '(^|/)qemu-system-aarch64-headless([[:space:]]|$)' | head -n 1 || true)"
-            if [[ -n "$qemu_pid" ]]; then
-              break
-            fi
+          for tick in $(seq 1 45); do
+            qemu_pid="$(find_qemu_pid)"
+            if [[ -n "$qemu_pid" ]]; then break; fi
             if ! kill -0 "$emulator_pid" 2>/dev/null; then
-              echo "Android emulator launcher exited before QEMU backend started"
-              print_startup_diagnostics
-              exit 1
-            fi
-            if grep -Eq "gic-version=host requires KVM|The 'host' CPU type can only be used with KVM" results-android-emulator.log; then
-              echo "QEMU still selected a KVM-only CPU/GIC mode despite the TCG overrides"
+              echo "Android Emulator exited before the ARM64 QEMU backend started"
               print_startup_diagnostics
               exit 1
             fi
@@ -634,7 +547,7 @@ jobs:
           done
 
           if [[ -z "$qemu_pid" ]]; then
-            echo "Android QEMU backend process did not start within 30 seconds"
+            echo "ARM64 QEMU backend was not visible within 45 seconds"
             print_startup_diagnostics
             exit 1
           fi
@@ -645,12 +558,7 @@ jobs:
             local state
             state="$(ps -o stat= -p "$qemu_pid" 2>/dev/null | tr -d '[:space:]' || true)"
             if [[ -z "$state" || "$state" == Z* ]]; then
-              echo "Android QEMU backend exited before Android became ready (pid=$qemu_pid state=${state:-missing})"
-              print_startup_diagnostics
-              exit 1
-            fi
-            if grep -Eq "gic-version=host requires KVM|The 'host' CPU type can only be used with KVM" results-android-emulator.log; then
-              echo "Android QEMU selected a KVM-only CPU/GIC mode under TCG"
+              echo "ARM64 QEMU backend exited before Android became ready (pid=$qemu_pid state=$state)"
               print_startup_diagnostics
               exit 1
             fi
@@ -667,12 +575,12 @@ jobs:
             sleep 2
           done
           if [[ "$device_ready" != true ]]; then
-            echo "Timed out after 20 minutes waiting for Android ADB device (TCG)"
+            echo "Timed out after 20 minutes waiting for ARM64 Android ADB device (TCG)"
             print_startup_diagnostics
             exit 1
           fi
 
-          boot_deadline=$((SECONDS + 30 * 60))
+          boot_deadline=$((SECONDS + 40 * 60))
           booted=false
           while (( SECONDS < boot_deadline )); do
             boot_state="$(timeout 7s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
@@ -684,7 +592,7 @@ jobs:
             sleep 2
           done
           if [[ "$booted" != true ]]; then
-            echo "Timed out after 30 minutes waiting for Android sys.boot_completed (TCG)"
+            echo "Timed out after 40 minutes waiting for Android sys.boot_completed (TCG)"
             print_startup_diagnostics
             exit 1
           fi
@@ -694,20 +602,19 @@ jobs:
           test "$runtime_abi" = "arm64-v8a"
           mkdir -p "$GITHUB_WORKSPACE/results/android-live-hermes"
           python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/runtime-environment.json" "$runtime_abi" "$qemu_pid" <<'PYENV'
-          import json, pathlib, platform, sys
+          import json, platform, sys
           out, guest_abi, qemu_pid = sys.argv[1:]
           json.dump({
               "host_arch": platform.machine(),
+              "emulator_host_arch": "x86_64",
               "guest_abi": guest_abi,
               "cpu_acceleration": "qemu-tcg-software",
               "gic_version": 3,
               "cpu_model": "max",
-              "metrics_tls_patch": "random-seed TPIDR_EL0+0x28->+0x20 (initializer plus two readers)",
-              "metrics_library_sha256": "2e0fb5a295de379b747ae5dab720f020c4d006bb8ea8cd4d6a936b91565168a1",
-              "kvm_available": pathlib.Path("/dev/kvm").exists(),
+              "kvm_available": False,
               "qemu_pid": int(qemu_pid),
-              "emulator_package": "Changqing-JING/android-emulator-aarch64-linux@v2.12.0-19097-g85fa07f04ef",
-              "emulator_sha256": "67ce4f576687b067d9b36668405b86b9749745d67d31037616aac12c49c63a65"
+              "emulator_distribution": "official Android SDK Linux x86_64",
+              "system_image": "android-35;google_apis;arm64-v8a"
           }, open(out, "w"), indent=2)
           print("ANDROID_ARM64_TCG_RUNTIME_ENVIRONMENT_RECORDED")
           PYENV
