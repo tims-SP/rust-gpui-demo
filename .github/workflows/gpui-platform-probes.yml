@@ -334,6 +334,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Android Emulator's Linux QEMU backend links against PulseAudio.
+          sudo apt-get update
+          sudo apt-get install -y libpulse0
           # sdkmanager exits as soon as all licenses are accepted. Keep the
           # producer's expected SIGPIPE from failing the workflow, but still
           # require sdkmanager itself to return success.
@@ -363,6 +366,13 @@ jobs:
           file "$emulator_bin"
           find "$ANDROID_HOME/emulator/qemu" -maxdepth 3 -type f -name 'qemu-system-*' -print
           "$emulator_bin" -version
+          qemu_bin="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
+          test -x "$qemu_bin"
+          ldd "$qemu_bin" | tee /tmp/android-emulator-qemu-ldd.txt
+          if grep -q 'not found' /tmp/android-emulator-qemu-ldd.txt; then
+            echo "Android emulator QEMU has unresolved shared-library dependencies"
+            exit 1
+          fi
           "$emulator_bin" -accel-check
       - name: Prepare pinned GPUI Mobile example and Gradle mirror
         shell: bash
