@@ -236,6 +236,15 @@ jobs:
           xcodegen --version
           xcodebuild -version
           xcrun --sdk iphonesimulator --show-sdk-path
+      - name: Install screenshot validation dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_venv="$RUNNER_TEMP/gpui-image-venv"
+          python3 -m venv "$image_venv"
+          "$image_venv/bin/python" -m pip install --disable-pip-version-check Pillow
+          echo "GPUI_IMAGE_PYTHON=$image_venv/bin/python" >> "$GITHUB_ENV"
+          "$image_venv/bin/python" -c 'import PIL; print(f"Pillow {PIL.__version__}")'
       - name: Build and run live Hermes on iOS Simulator for both frameworks
         shell: bash
         run: |
@@ -297,7 +306,7 @@ jobs:
               --log "$out/$framework-runtime.log" --framework "$framework" \
               --platform ios --out "$out/$framework-metrics.json"
             xcrun simctl io "$udid" screenshot "$out/$framework.png"
-            python3 "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
+            "$GPUI_IMAGE_PYTHON" "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
             kill "$logpid" 2>/dev/null || true
             xcrun simctl terminate "$udid" dev.gpui.mobile.example >/dev/null 2>&1 || true
           done
@@ -430,6 +439,15 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v4
+      - name: Install screenshot validation dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_venv="$RUNNER_TEMP/gpui-image-venv"
+          python3 -m venv "$image_venv"
+          "$image_venv/bin/python" -m pip install --disable-pip-version-check Pillow
+          echo "GPUI_IMAGE_PYTHON=$image_venv/bin/python" >> "$GITHUB_ENV"
+          "$image_venv/bin/python" -c 'import PIL; print(f"Pillow {PIL.__version__}")'
       - name: Install ARM64 Android Emulator, ADB and system image
         timeout-minutes: 25
         shell: bash
@@ -590,7 +608,7 @@ jobs:
               --log "$out/$framework-runtime.log" --framework "$framework" \
               --platform android --out "$out/$framework-metrics.json"
             adb exec-out screencap -p > "$out/$framework.png"
-            python3 "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
+            "$GPUI_IMAGE_PYTHON" "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
             kill "$logpid" 2>/dev/null || true
             adb shell am force-stop dev.gpui.mobile.example
           done
