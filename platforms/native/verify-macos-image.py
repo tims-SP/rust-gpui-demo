@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Verify an actual macOS screenshot contains GPUI's imported light scene.
+"""Verify an actual macOS screenshot contains the rendered GPUI framework scene.
 
-This is a pixel and real-window acceptance gate, not proof of live JS mutation.
+This is a pixel and real-window acceptance gate; timing is validated separately.
 """
 from pathlib import Path
 from PIL import Image, ImageStat

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Extract a verified GPUI timer-driven update -> Render callback benchmark.
+"""Extract verified GPUI Render-callback metrics for replay or live Hermes/JSI.
 
-This is not GPU presentation latency or JS→Rust live bridge performance.
+The measured endpoint is a real GPUI Render callback, never GPU Present.
 """
 import argparse
 import json
@@ -25,6 +25,15 @@ def extract(raw: str, framework: str) -> dict:
         raise ValueError("live Hermes run has an invalid source marker")
     if replay and data.get("source") != "precomputed-Hermes-scene":
         raise ValueError("replay run has an invalid source marker")
+    if live:
+        if data.get("driver") != "gpui-timer-repeated-framework-click-hbc":
+            raise ValueError("live run did not use repeated framework HBC events")
+        if data.get("metric") != "jsi_mutation_to_render_callback_us_NOT_GPU_present":
+            raise ValueError("live run metric does not end at the JSI-to-Render boundary")
+        if data.get("hermes_mutation_batches", 0) < 128:
+            raise ValueError("live run did not deliver the expected HBC mutation batches")
+        if data.get("gpu_present_latency_ms") is not None or data.get("end_to_end_latency_ms") is not None:
+            raise ValueError("live Render callback run must not claim GPU Present or E2E")
     if data.get("scheduled_updates") != 120 or data.get("applied_updates") != 120:
         raise ValueError("incomplete update sequence")
     if data.get("render_callbacks_with_pending_update", 0) < 20:
