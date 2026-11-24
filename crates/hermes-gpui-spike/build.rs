@@ -5,8 +5,8 @@ fn main() {
         .expect("hermes-lean-sys must export the pinned Hermes include directory");
     let hermesc = env::var("DEP_HERMES_LEAN_HERMESC_PATH")
         .expect("hermes-lean-sys must export the matching hermesc path");
-    let engine_digest = env::var("DEP_HERMES_LEAN_ENGINE_DIGEST")
-        .expect("hermes-lean-sys must export the linked engine digest");
+    let engine_digest = env::var("DEP_HERMES_LEAN_LINKED_ENGINE_DIGEST")
+        .expect("hermes-lean-sys must export the exact linked engine digest");
     let bytecode_version = env::var("DEP_HERMES_LEAN_BYTECODE_VERSION")
         .expect("hermes-lean-sys must export the HBC bytecode version");
     println!("cargo:rustc-env=HERMESC_PATH={hermesc}");

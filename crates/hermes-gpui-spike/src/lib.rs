@@ -36,6 +36,8 @@ pub struct HermesBridge {
 
 impl HermesBridge {
     pub fn new() -> Result<Self, String> {
+        // Force Cargo to retain the exact pinned native VM archive and its link line.
+        hermes_lean_sys::ensure_linked();
         let handle = unsafe { gpui_hermes_create() };
         if handle.is_null() {
             return Err("could not create the pinned Hermes runtime".into());
