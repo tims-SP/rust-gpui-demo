@@ -58,6 +58,37 @@ def main() -> None:
     cargo_toml.write_text(cargo)
 
     lib = lib_rs.read_text()
+    # In live-Hermes mode the original Router window is not compiled. Its
+    # prelude traits, WindowOptions, and Router imports must follow the same
+    # feature gate or `-D warnings` turns unused imports into build failures.
+    old_mobile_imports = (
+        '#[cfg(any(target_os = "ios", target_os = "android"))]\n'
+        'use gpui::{prelude::*, App, WindowOptions};\n'
+        '\n'
+        '#[cfg(target_os = "android")]\n'
+        'use gpui::Application;\n'
+        '\n'
+        '#[cfg(any(target_os = "ios", target_os = "android"))]\n'
+        'use screens::Router;'
+    )
+    new_mobile_imports = (
+        '#[cfg(any(target_os = "ios", target_os = "android"))]\n'
+        'use gpui::App;\n'
+        '\n'
+        '#[cfg(all(any(target_os = "ios", target_os = "android"), not(feature = "live-hermes")))]\n'
+        'use gpui::{prelude::*, WindowOptions};\n'
+        '\n'
+        '#[cfg(target_os = "android")]\n'
+        'use gpui::Application;\n'
+        '\n'
+        '#[cfg(all(any(target_os = "ios", target_os = "android"), not(feature = "live-hermes")))]\n'
+        'use screens::Router;'
+    )
+    if old_mobile_imports in lib:
+        lib = replace_once(lib, old_mobile_imports, new_mobile_imports, "mobile imports live feature gate")
+    elif new_mobile_imports not in lib:
+        raise SystemExit("mobile imports: expected upstream imports were not found")
+
     if 'mod live_hermes;' not in lib:
         lib = replace_once(
             lib,
