@@ -15,5 +15,9 @@ fn main() {
     println!("cargo:rerun-if-changed=src/hermes_shim.cc");
     let mut build = cc::Build::new();
     build.cpp(true).file("src/hermes_shim.cc").include(PathBuf::from(include_dir));
-    build.flag_if_supported("-std=c++17").warnings(true).compile("gpui_hermes_shim");
+    // cc-rs maps this to /std:c++17 on MSVC and -std=c++17 on clang/gcc.
+    // The pinned Hermes public headers use C++17 types (string_view, variant).
+    build.std("c++17");
+    // The JSI shim intentionally translates C++ exceptions into Rust errors.
+    build.flag_if_supported("/EHsc").warnings(true).compile("gpui_hermes_shim");
 }
