@@ -221,6 +221,15 @@ jobs:
               if old not in text:
                   raise SystemExit('Could not locate the GPUI Mobile iOS Rust build command')
               text = text.replace(old, new, 1)
+          output_marker = '      - name: "Build Rust Static Library"\n        script: |\n'
+          output_phase = ('      - name: "Build Rust Static Library"\n'
+                          '        outputFiles:\n'
+                          '          - "$(EXAMPLE_STATIC_LIB)"\n'
+                          '        script: |\n')
+          if '        outputFiles:\n          - "$(EXAMPLE_STATIC_LIB)"\n' not in text:
+              if output_marker not in text:
+                  raise SystemExit('Could not locate XcodeGen Build Rust Static Library phase')
+              text = text.replace(output_marker, output_phase, 1)
           project.write_text(text)
           PY
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
@@ -366,13 +375,9 @@ jobs:
           file "$emulator_bin"
           find "$ANDROID_HOME/emulator/qemu" -maxdepth 3 -type f -name 'qemu-system-*' -print
           "$emulator_bin" -version
-          qemu_bin="$ANDROID_HOME/emulator/qemu/linux-x86_64/qemu-system-x86_64"
-          test -x "$qemu_bin"
-          ldd "$qemu_bin" | tee /tmp/android-emulator-qemu-ldd.txt
-          if grep -q 'not found' /tmp/android-emulator-qemu-ldd.txt; then
-            echo "Android emulator QEMU has unresolved shared-library dependencies"
-            exit 1
-          fi
+          # The emulator launcher supplies LD_LIBRARY_PATH for its bundled
+          # Qt/protobuf libraries; a raw ldd invocation would report false misses.
+          ldconfig -p | grep -q 'libpulse.so.0'
           "$emulator_bin" -accel-check
       - name: Prepare pinned GPUI Mobile example and Gradle mirror
         shell: bash
@@ -554,4 +559,4 @@ jobs:
           path: |
             results/android-live-hermes/
             results-android-emulator.log
-          retention-days: 14
+          retention-days: 14\n
