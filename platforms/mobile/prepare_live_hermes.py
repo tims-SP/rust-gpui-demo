@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import shutil
 from pathlib import Path
 
@@ -30,6 +32,11 @@ def main() -> None:
             raise SystemExit(f"missing required input: {path}")
 
     cargo = cargo_toml.read_text()
+    bridge_path = Path(os.path.relpath(repo / "crates/hermes-gpui-spike", example)).as_posix()
+    bridge_dependency = f'gpui-hermes-live-spike = {{ path = "{bridge_path}", optional = true }}'
+    dependency_pattern = r'gpui-hermes-live-spike = \{ path = "[^"]+", optional = true \}'
+    if re.search(dependency_pattern, cargo):
+        cargo = re.sub(dependency_pattern, bridge_dependency, cargo, count=1)
     if "[features]\nlive-hermes" not in cargo:
         cargo = replace_once(
             cargo,
@@ -37,12 +44,11 @@ def main() -> None:
             '[features]\nlive-hermes = ["dep:gpui-hermes-live-spike"]\n\n[dependencies]\n',
             "Cargo feature insertion",
         )
-    if 'gpui-hermes-live-spike = {' not in cargo:
+    if bridge_dependency not in cargo:
         cargo = replace_once(
             cargo,
             'gpui-mobile = { path = ".." }\n',
-            'gpui-mobile = { path = ".." }\n'
-            'gpui-hermes-live-spike = { path = "../../crates/hermes-gpui-spike", optional = true }\n',
+            'gpui-mobile = { path = ".." }\n' + bridge_dependency + "\n",
             "Cargo live Hermes dependency",
         )
     if 'serde_json = "1"' not in cargo:
