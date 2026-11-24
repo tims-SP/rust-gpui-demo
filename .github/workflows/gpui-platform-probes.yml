@@ -498,6 +498,11 @@ jobs:
           esac
           printf '%s\n' "$qemu_arm_bin ($qemu_arch)" > "$GITHUB_WORKSPACE/results/android-live-hermes/qemu-binary.txt"
           "$ANDROID_HOME/platform-tools/adb" version
+          export ANDROID_USER_HOME="$RUNNER_TEMP/gpui-android-user"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_GUEST_SYSTEM_IMAGE=android-35;google_apis;arm64-v8a"
           echo "ANDROID_EMULATOR_EXECUTION_MODE=QEMU_TCG_X86_64_HOST_ARM64_GUEST"
           echo "PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH" >> "$GITHUB_ENV"
@@ -508,8 +513,15 @@ jobs:
         run: |
           set -euo pipefail
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-          echo no | avdmanager create avd --force --name gpui-live-arm64 \
+          test -n "$ANDROID_USER_HOME"
+          test -n "$ANDROID_AVD_HOME"
+          mkdir -p "$ANDROID_AVD_HOME"
+          printf 'no\n' | avdmanager create avd --force --name gpui-live-arm64 \
             --package "system-images;android-35;google_apis;arm64-v8a"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME"
+          avdmanager list avd
+          test -s "$ANDROID_AVD_HOME/gpui-live-arm64.ini"
+          test -d "$ANDROID_AVD_HOME/gpui-live-arm64.avd"
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           export ANDROID_I_WANT_MY_TCG=yes
           "$emulator_bin" -avd gpui-live-arm64 -no-window -no-audio -no-boot-anim \
