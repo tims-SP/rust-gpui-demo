@@ -462,6 +462,8 @@ jobs:
           set -euo pipefail
           test "$(dpkg --print-architecture)" = amd64
           test -n "$ANDROID_HOME"
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libpcre2-16-0
           mkdir -p "$ANDROID_HOME" "$GITHUB_WORKSPACE/results/android-live-hermes"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           command -v sdkmanager
