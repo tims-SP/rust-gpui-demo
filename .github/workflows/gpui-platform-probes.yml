@@ -367,7 +367,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Apply the vendored Apache-2.0 gpui-pre-wgpu 0.3.6 GLES-only backport
+          # strictly for Android emulator CI. SwiftShader Vulkan on emulator 37.2.13
+          # crashes QEMU with "SPIR-V ERROR: 0:0 Invalid source language operand: 10"
+          # during WgpuRenderer shader compilation; GLES_ONLY avoids that crash.
+          cp -a platforms/mobile/vendor/gpui-pre-wgpu-0.3.6 .gpui-mobile/benchmark-gpui-pre-wgpu
+          python3 - <<'PYBACKPORT'
+          from pathlib import Path
+          root = Path(".gpui-mobile")
+          for path, relative in [
+              (root / "Cargo.toml", "benchmark-gpui-pre-wgpu"),
+              (root / "example" / "Cargo.toml", "../benchmark-gpui-pre-wgpu"),
+          ]:
+              content = path.read_text()
+              if "[patch.crates-io]" in content:
+                  raise SystemExit(f"Unexpected existing cargo registry patch: {path}")
+              path.write_text(content + '\n[patch.crates-io]\ngpui-pre-wgpu = { path = "' + relative + '" }\n')
+          root_cargo = root / "Cargo.toml"
+          s = root_cargo.read_text()
+          old_dep = 'gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6" }'
+          new_dep = 'gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6", features = ["android-gles-only"] }'
+          if s.count(old_dep) != 1:
+              raise SystemExit(f"Unknown upstream Android renderer dependency in {root_cargo}")
+          root_cargo.write_text(s.replace(old_dep, new_dep, 1))
+          print("GPUI_ANDROID_EMULATOR_GLES_ONLY_ENABLED")
+          PYBACKPORT
           python3 platforms/mobile/prepare_live_hermes.py --example .gpui-mobile/example --repo "$GITHUB_WORKSPACE"
+          cargo metadata --manifest-path .gpui-mobile/example/Cargo.toml --format-version 1 \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); p=[p for p in d["packages"] if p["name"] == "gpui-pre-wgpu"]; assert len(p)==1 and "benchmark-gpui-pre-wgpu" in p[0]["manifest_path"], p; print("GPUI_ANDROID_PATCH_RESOLVED:", p[0]["manifest_path"])'
           python3 - <<'PY'
           from pathlib import Path
           import re
@@ -568,6 +595,24 @@ jobs:
           avdmanager list avd
           test -s "$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.ini"
           test -d "$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.avd"
+          avd_cfg="$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.avd/config.ini"
+          python3 - "$avd_cfg" <<'PYCFG'
+          from pathlib import Path
+          import sys
+          cfg = Path(sys.argv[1])
+          lines = cfg.read_text().splitlines() if cfg.exists() else []
+          overrides = {
+              "hw.lcd.width": "1080",
+              "hw.lcd.height": "1920",
+              "hw.lcd.density": "420",
+              "skin.name": "1080x1920",
+          }
+          kept = [line for line in lines if line.split("=", 1)[0].strip() not in overrides]
+          for k, v in overrides.items():
+              kept.append(f"{k}={v}")
+          cfg.write_text("\n".join(kept) + "\n")
+          print("ANDROID_AVD_DISPLAY_CONFIGURED=1080x1920@420dpi")
+          PYCFG
 
           emulator_bin="$ANDROID_HOME/emulator/emulator"
           # The x86_64 guest is extremely slow under TCG on this runner: the prior
@@ -748,8 +793,14 @@ jobs:
               fi
             }
 
-            if ! timeout 60s adb shell am start -W -n dev.gpui.mobile.example/dev.gpui.mobile.GpuiActivity > "$out/$framework-activity-start.txt" 2>&1; then
+            if ! timeout 90s adb shell am start -W -n dev.gpui.mobile.example/dev.gpui.mobile.GpuiActivity > "$out/$framework-activity-start.txt" 2>&1; then
               echo "ANDROID_ACTIVITY_START_FAILED:$framework"
+              echo "=== QEMU / EMULATOR PROCESS STATUS ==="
+              ps -eo pid,ppid,stat,etime,args | grep -E '[e]mulator|[q]emu-system-x86_64' || echo "NO_EMULATOR_OR_QEMU_RUNNING"
+              echo "=== EMULATOR LOG TAIL ==="
+              tail -n 40 results-android-emulator.log 2>/dev/null || true
+              echo "=== STREAMING RUNTIME LOG (GPUI/FATAL) ==="
+              grep -Ei 'gpui|hermes|FATAL|AndroidRuntime|linker|dlopen|UnsatisfiedLink|SIGSEGV|SIGABRT|panic' "$out/$framework-runtime.log" | tail -n 80 || true
               collect_android_runtime_diagnostics
               cat "$out/$framework-activity-start.txt"
               kill "$logpid" 2>/dev/null || true
