@@ -178,7 +178,7 @@ pub fn open_main_window(cx: &mut App) {
         stats: stats.clone(),
     };
     let window_handle = cx
-        .open_window(WindowOptions::default(), move |_, _| state)
+        .open_window(WindowOptions::default(), move |_, cx| cx.new(|_| state))
         .expect("open live Hermes GPUI Mobile window");
     cx.activate(true);
 
