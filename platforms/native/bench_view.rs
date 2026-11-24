@@ -25,7 +25,10 @@ struct BenchView {
     stats: Rc<RefCell<FrameStats>>,
 }
 impl Render for BenchView {
-    fn render(&mut self,_window:&mut Window,_cx:&mut Context<Self>)->impl IntoElement {
+    fn render(&mut self,window:&mut Window,_cx:&mut Context<Self>)->impl IntoElement {
+        // Keep the real macOS display-link frame source awake during the replay.
+        #[cfg(target_os = "macos")]
+        window.request_animation_frame();
         if let Ok(mut s)=self.stats.try_borrow_mut(){
             s.actual_render_calls += 1;
             if let Some(issued)=s.pending_at.take(){
@@ -88,7 +91,7 @@ fn main(){
         let bounds=Bounds::centered(None,size(px(1000.),px(880.)),cx);
         let entity=cx.new(|_|state);
         let visible_entity=entity.clone();
-        cx.open_window(WindowOptions{
+        let window_handle=cx.open_window(WindowOptions{
             window_bounds:Some(WindowBounds::Windowed(bounds)),..Default::default()
         },move|_,_|visible_entity).expect("Native GPUI window creation failed");
         cx.activate(true);
@@ -100,7 +103,7 @@ fn main(){
             stats.borrow_mut().driver_start=Some(Instant::now());
             for idx in 0..120 {
                 executor.timer(Duration::from_millis(16)).await;
-                entity.update(async_cx, |view, cx|{
+                window_handle.update(async_cx, |view, window, cx|{
                     {
                         let mut s=view.stats.borrow_mut();
                         s.ui_updates+=1;
@@ -110,11 +113,9 @@ fn main(){
                     if idx%15==0 { view.theme=if view.theme=="dark"{"light"}else{"dark"}.to_owned(); }
                     view.rows.rotate_left(1);
                     cx.notify();
-                    // macOS CI's virtual desktop can throttle entity-only redraws.
-                    // Explicitly request the real window frame without claiming GPU present.
-                    #[cfg(target_os = "macos")]
-                    cx.refresh_windows();
-                });
+                    // Dirty the actual root window in the same update transaction.
+                    window.refresh();
+                }).expect("update GPUI root window during replay");
             }
             executor.timer(Duration::from_millis(250)).await;
             let measured=stats.borrow();
