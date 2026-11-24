@@ -2,7 +2,7 @@ name: GPUI Windows macOS iOS Android build feasibility
 on:
   push:
     branches: [main, feature/gpui-frame-bench]
-    paths: ['.github/workflows/gpui-platform-probes.yml']
+    paths: ['.github/workflows/gpui-platform-probes.yml', 'platforms/mobile/**', 'tools/verify-mobile-live-image.py']
   workflow_dispatch:
     inputs:
       live_mobile_hermes:

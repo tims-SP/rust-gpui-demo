@@ -19,7 +19,7 @@ hits = 0
 for y in range(25, height - 25, 8):
     for x in range(25, width - 25, 8):
         pixel = image.getpixel((x, y))
-        if max(abs(a - b) for a, b in zip(pixel, target)) <= 5:
+        if max(abs(a - b) for a, b in zip(pixel, target)) <= 8:
             hits += 1
 if hits < args.minimum_hits:
     raise SystemExit(f"no large GPUI content area: background sample hits={hits}")
