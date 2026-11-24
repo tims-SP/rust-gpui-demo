@@ -23,15 +23,22 @@ def extract(raw: str, framework: str) -> dict:
         raise ValueError("inconsistent Hermes/JSI source claims")
     if live and data.get("source") != "live-Hermes-HBC-in-process":
         raise ValueError("live Hermes run has an invalid source marker")
-    if replay and data.get("source") != "precomputed-Hermes-scene":
-        raise ValueError("replay run has an invalid source marker")
+    if replay:
+        if data.get("source") != "precomputed-Hermes-scene":
+            raise ValueError("replay run has an invalid source marker")
+        if data.get("driver") != "gpui-timer-internal":
+            raise ValueError("replay run did not use the GPUI timer driver")
+        if data.get("metric") != "notify_to_render_callback_us_NOT_GPU_present":
+            raise ValueError("replay run metric does not end at the Render callback")
     if live:
         if data.get("driver") != "gpui-timer-repeated-framework-click-hbc":
             raise ValueError("live run did not use repeated framework HBC events")
         if data.get("metric") != "jsi_mutation_to_render_callback_us_NOT_GPU_present":
             raise ValueError("live run metric does not end at the JSI-to-Render boundary")
-        if data.get("hermes_mutation_batches", 0) < 128:
-            raise ValueError("live run did not deliver the expected HBC mutation batches")
+        if data.get("interactive_hermes_mutation_batches") != 120:
+            raise ValueError("live run must deliver exactly one JSI mutation batch for each of 120 framework events")
+        if data.get("hermes_mutation_batches", 0) < data.get("interactive_hermes_mutation_batches", 0):
+            raise ValueError("live HBC mutation batch accounting is inconsistent")
         if data.get("gpu_present_latency_ms") is not None or data.get("end_to_end_latency_ms") is not None:
             raise ValueError("live Render callback run must not claim GPU Present or E2E")
     if data.get("scheduled_updates") != 120 or data.get("applied_updates") != 120:

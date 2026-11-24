@@ -11,6 +11,8 @@ spec.loader.exec_module(mod)
 def log(**updates):
     d = {"schema": "gpui-render-replay/v1", "framework": "svelte",
          "live_jsi_to_gpui": False, "live_hermes_vm": False,
+         "source": "precomputed-Hermes-scene", "driver": "gpui-timer-internal",
+         "metric": "notify_to_render_callback_us_NOT_GPU_present",
          "scheduled_updates": 120, "applied_updates": 120,
          "render_callbacks_with_pending_update": 115,
          "p50_us": 350, "p95_us": 800, "p99_us": 1200}
@@ -32,5 +34,28 @@ class TestExtract(unittest.TestCase):
         with self.assertRaises(ValueError): mod.extract(log(render_callbacks_with_pending_update=0), "svelte")
     def test_repeated_results(self):
         with self.assertRaises(ValueError): mod.extract(log()+log(), "svelte")
+    def test_missing_replay_source_rejected(self):
+        with self.assertRaises(ValueError): mod.extract(log(source="precomputed-Hermes-JSON"), "svelte")
+    def test_valid_live_hbc_jsi_record(self):
+        live = log(
+            source="live-Hermes-HBC-in-process",
+            driver="gpui-timer-repeated-framework-click-hbc",
+            metric="jsi_mutation_to_render_callback_us_NOT_GPU_present",
+            live_jsi_to_gpui=True, live_hermes_vm=True,
+            initial_hermes_mutation_batches=7,
+            interactive_hermes_mutation_batches=120,
+            hermes_mutation_batches=127,
+            gpu_present_latency_ms=None, end_to_end_latency_ms=None)
+        self.assertTrue(mod.extract(live, "svelte")["live_jsi_to_gpui"])
+    def test_live_record_requires_mutation_batches(self):
+        live = log(
+            source="live-Hermes-HBC-in-process",
+            driver="gpui-timer-repeated-framework-click-hbc",
+            metric="jsi_mutation_to_render_callback_us_NOT_GPU_present",
+            live_jsi_to_gpui=True, live_hermes_vm=True,
+            initial_hermes_mutation_batches=7,
+            interactive_hermes_mutation_batches=119,
+            hermes_mutation_batches=126)
+        with self.assertRaises(ValueError): mod.extract(live, "svelte")
 
 if __name__ == "__main__": unittest.main()

@@ -168,6 +168,8 @@ fn main(){
                 "p50_us":percentile(&samples,0.50),
                 "p95_us":percentile(&samples,0.95),
                 "p99_us":percentile(&samples,0.99),
+                "initial_hermes_mutation_batches":initial_batches,
+                "interactive_hermes_mutation_batches":engine.batches().saturating_sub(initial_batches),
                 "hermes_mutation_batches":engine.batches(),
                 "scene_operations":engine.operations(),
                 "elapsed_ms":measured.driver_start.map(|at|at.elapsed().as_millis() as u64),
