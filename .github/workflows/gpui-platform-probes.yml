@@ -551,9 +551,32 @@ jobs:
           test -d "$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.avd"
 
           emulator_bin="$ANDROID_HOME/emulator/emulator"
-          export ANDROID_I_WANT_MY_TCG=yes
-          "$emulator_bin" -avd gpui-x86_64-arm64-bridge -no-window -no-audio -no-boot-anim \
-            -accel off -gpu swiftshader_indirect -cores 2 \
+          # The x86_64 guest is extremely slow under TCG on this runner: the prior
+          # run took 940 seconds to boot and Android killed the app before attach.
+          # /dev/kvm exists on the hosted runner but is group-restricted; grant the
+          # ephemeral runner user access and require a successful KVM preflight.
+          if [[ ! -c /dev/kvm ]]; then
+            echo "KVM_DEVICE_MISSING: /dev/kvm is unavailable on this runner"
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo "KVM_DEVICE_NOT_ACCESSIBLE after permission adjustment"
+            ls -l /dev/kvm || true
+            exit 1
+          fi
+          accel_check="$( "$emulator_bin" -accel-check 2>&1 )" || {
+            printf "%s\\n" "$accel_check"
+            echo "ANDROID_EMULATOR_KVM_PREFLIGHT_FAILED"
+            exit 1
+          }
+          printf "%s\\n" "$accel_check"
+          if ! grep -Eiq "KVM.*(installed and usable|usable)" <<< "$accel_check"; then
+            echo "ANDROID_EMULATOR_KVM_NOT_USABLE"
+            exit 1
+          fi
+          "$emulator_bin" -avd gpui-x86_64-arm64-bridge -no-window -no-audio -no-boot-anim \\
+            -accel on -gpu swiftshader_indirect -cores 2 \\
             -no-snapshot -no-snapshot-load -no-snapshot-save -no-metrics \
             > results-android-emulator.log 2>&1 &
           emulator_pid=$!
@@ -653,8 +676,8 @@ jobs:
           json.dump({
               "host_arch": platform.machine(),
               "android_guest_arch": "x86_64",
-              "cpu_acceleration": "qemu-tcg-software",
-              "kvm_available": False,
+              "cpu_acceleration": "qemu-kvm",
+              "kvm_available": True,
               "application_native_abi": "arm64-v8a",
               "android_supported_abis": abi_list,
               "native_bridge": native_bridge,
