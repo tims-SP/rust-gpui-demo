@@ -512,5 +512,3 @@ jobs:
             results/android-live-hermes/
             results-android-emulator.log
           retention-days: 14
-
-[executed on device: racknerd-cd91d33 (1e95fde8-1f7f-4f1a-8070-affab7ba2de9)]
