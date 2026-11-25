@@ -44,10 +44,14 @@ def main():
         try:
             page.goto(args.url,wait_until="domcontentloaded",timeout=30000)
             page.wait_for_function(
-                "() => document.querySelector('#gpui-bench-result')?.getAttribute('data-status') === 'pass'",
+                "() => ['pass', 'fail'].includes(document.querySelector('#gpui-bench-result')?.getAttribute('data-status'))",
                 timeout=args.timeout_ms,polling=150)
-            ok=True
-            print("GPUI_WEB_REALTIME_WASM_REPLAY_DOM_PASS",flush=True)
+            status=page.locator("#gpui-bench-result").get_attribute("data-status")
+            ok=(status == "pass")
+            if ok:
+                print("GPUI_WEB_REALTIME_WASM_REPLAY_DOM_PASS",flush=True)
+            else:
+                events.append("explicit-fail:"+str(page.locator("#gpui-bench-result").text_content())[:1500])
         except PlaywrightTimeoutError as exc:
             events.append(f"timeout:{exc}")
         finally:
