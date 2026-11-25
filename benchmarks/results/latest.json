@@ -1,6 +1,6 @@
 {
   "schema": "six-platform-benchmark/v1",
-  "generated_at_utc": "2026-11-24T15:35:00Z",
+  "generated_at_utc": "2026-11-25T10:35:00Z",
   "repo": "tims-SP/rust-gpui-demo",
   "cells": [
     {
@@ -270,7 +270,7 @@
   "live_hermes": {
     "source_file": "benchmarks/results/live-hermes.json",
     "schema": "live-hermes-gpui/v1",
-    "generated_at_utc": "2026-11-24T15:35:00Z",
+    "generated_at_utc": "2026-11-25T10:35:00Z",
     "repo": "tims-SP/rust-gpui-demo",
     "engine": {
       "runtime": "Expo Ibex2 / unmodified Hermes",
@@ -582,16 +582,76 @@
         "end_to_end_latency_ms": null,
         "application_abi": "arm64-v8a",
         "execution_environment": "x86_64-kvm-android-35-emulator-libndk_translation-arm64-native-bridge-swiftshader-gles"
+      },
+      {
+        "platform": "web",
+        "framework": "svelte",
+        "status": "PASS",
+        "ci_run_id": 45541039158,
+        "ci_sha": "13c64a794c4c39c36a3c74a227f18b62a1d6f89f",
+        "artifact": "gpui-web-official-canvas-svelte-solid",
+        "source": "live-Hermes-WASM-in-browser",
+        "live_hermes_vm": true,
+        "live_jsi_to_gpui": true,
+        "driver": "hermes-wasm-emscripten-print-bridge",
+        "metric": "jsi_mutation_to_render_callback_us_NOT_GPU_present",
+        "scheduled_updates": 120,
+        "applied_updates": 120,
+        "interactive_hermes_mutation_batches": 120,
+        "initial_hermes_mutation_batches": 7,
+        "total_hermes_mutation_batches": 127,
+        "render_callbacks_with_pending_update": 120,
+        "render_callback_count": 124,
+        "p50_us": 73800,
+        "p95_us": 96560,
+        "p99_us": 97870,
+        "elapsed_ms": 11914,
+        "scene_operations": 53215,
+        "screenshot": "svelte.png",
+        "screenshot_size": "1200x950",
+        "screenshot_pixels_verified": true,
+        "gpu_present_latency_ms": null,
+        "end_to_end_latency_ms": null,
+        "execution_environment": "headless-chromium-swiftshader-webgl-single-threaded"
+      },
+      {
+        "platform": "web",
+        "framework": "solid",
+        "status": "PASS",
+        "ci_run_id": 45541039158,
+        "ci_sha": "13c64a794c4c39c36a3c74a227f18b62a1d6f89f",
+        "artifact": "gpui-web-official-canvas-svelte-solid",
+        "source": "live-Hermes-WASM-in-browser",
+        "live_hermes_vm": true,
+        "live_jsi_to_gpui": true,
+        "driver": "hermes-wasm-emscripten-print-bridge",
+        "metric": "jsi_mutation_to_render_callback_us_NOT_GPU_present",
+        "scheduled_updates": 120,
+        "applied_updates": 120,
+        "interactive_hermes_mutation_batches": 120,
+        "initial_hermes_mutation_batches": 7,
+        "total_hermes_mutation_batches": 127,
+        "render_callbacks_with_pending_update": 120,
+        "render_callback_count": 124,
+        "p50_us": 72545,
+        "p95_us": 131380,
+        "p99_us": 189685,
+        "elapsed_ms": 12228,
+        "scene_operations": 47137,
+        "screenshot": "solid.png",
+        "screenshot_size": "1200x950",
+        "screenshot_pixels_verified": true,
+        "gpu_present_latency_ms": null,
+        "end_to_end_latency_ms": null,
+        "execution_environment": "headless-chromium-swiftshader-webgl-single-threaded"
       }
     ],
     "summary": {
-      "live_hermes_jsi_gpui_render_cells_passed": 10,
-      "live_hermes_jsi_gpui_render_cells_total": 10,
-      "six_platform_matrix_live_cells_passed": 10,
+      "live_hermes_jsi_gpui_render_cells_passed": 12,
+      "live_hermes_jsi_gpui_render_cells_total": 12,
+      "six_platform_matrix_live_cells_passed": 12,
       "six_platform_matrix_total_cells": 12,
-      "unmeasured_live_platforms": [
-        "web"
-      ],
+      "unmeasured_live_platforms": [],
       "gpu_present_cells_measured": 0,
       "full_end_to_end_cells_measured": 0,
       "live_platforms_proven": [
@@ -599,13 +659,14 @@
         "ios",
         "linux",
         "macos",
-        "windows"
+        "windows",
+        "web"
       ],
       "boundary_notes": [
-        "All P50/P95/P99 latencies measure JSI mutation callback entry to GPUI Render callback; GPU submission/Present and full end-to-end latencies are null (not measured).",
+        "All P50/P95/P99 latencies measure JSI mutation callback entry (or Web bridge entry) to GPUI Render callback; GPU submission/Present and full end-to-end latencies are null (not measured).",
         "Android live-Hermes evidence runs arm64-v8a APKs on an x86_64 KVM Android 35 emulator via libndk_translation.so Native Bridge and SwiftShader GLES, not physical ARM64 Android hardware.",
         "iOS live-Hermes evidence runs on iOS Simulator, not physical iPhone/iPad hardware.",
-        "Web remains precomputed-scene GPUI Web Canvas replay without in-browser live Hermes HBC/JSI execution."
+        "Web live-Hermes evidence executes HBC v99 inside pinned Hermes WASM in headless Chromium with Emscripten print bridge into Rust gpui-ui-mutation::Scene and gpui_web Canvas (SwiftShader WebGL, single-threaded dispatcher)."
       ]
     }
   },
@@ -653,10 +714,11 @@
         "ios",
         "linux",
         "macos",
-        "windows"
+        "windows",
+        "web"
       ],
-      "live_gpui_cells_passed": 10,
-      "live_gpui_cells_total": 10
+      "live_gpui_cells_passed": 12,
+      "live_gpui_cells_total": 12
     },
     "jsi_to_rust_scene": {
       "status": "PASS",
@@ -665,20 +727,21 @@
     },
     "jsi_to_gpui": {
       "status": "PASS",
-      "cells_passed": 10,
+      "cells_passed": 12,
       "cells_total": 12,
       "platforms": [
         "android",
         "ios",
         "linux",
         "macos",
-        "windows"
+        "windows",
+        "web"
       ]
     },
     "gpui_render_callback": {
       "status": "PASS",
-      "live_cells_passed": 10,
-      "live_cells_total": 10,
+      "live_cells_passed": 12,
+      "live_cells_total": 12,
       "updates_per_cell": 120,
       "paired_render_samples": {
         "linux_svelte": 49,
@@ -690,12 +753,14 @@
         "ios_svelte": 120,
         "ios_solid": 120,
         "android_svelte": 120,
-        "android_solid": 120
+        "android_solid": 120,
+        "web_svelte": 120,
+        "web_solid": 120
       }
     },
     "gpui_update_to_render_latency": {
       "status": "MEASURED",
-      "live_cells": 10,
+      "live_cells": 12,
       "percentiles": [
         "p50_us",
         "p95_us",

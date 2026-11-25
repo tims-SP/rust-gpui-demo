@@ -275,7 +275,7 @@ jobs:
           mkdir -p "$pkg/hbc"
           cp .zed-source/target/release/examples/hello_world "$pkg/hello_world"
           chmod +x "$pkg/hello_world"
-          cp "$hbc_dir/bootstrap.hbc" "$hbc_dir/click.hbc" "$hbc_dir/svelte.hbc" "$hbc/solid.hbc" "$pkg/hbc/"
+          cp "$hbc_dir/bootstrap.hbc" "$hbc_dir/click.hbc" "$hbc_dir/svelte.hbc" "$hbc_dir/solid.hbc" "$pkg/hbc/"
           cat > "$pkg/run.sh" <<'SH'
           #!/usr/bin/env bash
           set -euo pipefail
