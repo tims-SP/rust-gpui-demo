@@ -99,6 +99,32 @@ jobs:
           name: gpui-linux-svelte-solid-real-windows
           path: results/gpui-linux/
           retention-days: 30
+      - name: Stage runnable Linux replay debug package
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg=results/gpui-linux-package-debug
+          rm -rf "$pkg"
+          mkdir -p "$pkg"
+          cp .zed-source/target/debug/examples/hello_world "$pkg/hello_world"
+          chmod +x "$pkg/hello_world"
+          cp results/hermes/svelte.json results/hermes/solid.json "$pkg/"
+          cat > "$pkg/run.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          FRAMEWORK="${1:-svelte}"
+          export HERMES_BENCH_JSON="$DIR/${FRAMEWORK}.json"
+          exec "$DIR/hello_world"
+          SH
+          chmod +x "$pkg/run.sh"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: gpui-linux-replay-package-debug
+          path: results/gpui-linux-package-debug/
+          retention-days: 14
 
   gpui-linux-live-hermes-window:
     if: ${{ inputs.live_hermes }}
@@ -205,4 +231,34 @@ jobs:
         with:
           name: gpui-linux-live-hermes-svelte-solid-evidence
           path: results/linux-live-hermes/
+          retention-days: 14
+      - name: Stage runnable Linux live-Hermes debug package
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg=results/linux-live-hermes-package-debug
+          hbc_dir=results/live-hermes/crates/hermes-gpui-spike/target
+          rm -rf "$pkg"
+          mkdir -p "$pkg/hbc"
+          cp .zed-source/target/debug/examples/hello_world "$pkg/hello_world"
+          chmod +x "$pkg/hello_world"
+          cp "$hbc_dir/bootstrap.hbc" "$hbc_dir/click.hbc" "$hbc_dir/svelte.hbc" "$hbc_dir/solid.hbc" "$pkg/hbc/"
+          cat > "$pkg/run.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          FRAMEWORK="${1:-svelte}"
+          export HERMES_FRAMEWORK="$FRAMEWORK"
+          export HERMES_BOOTSTRAP_HBC="$DIR/hbc/bootstrap.hbc"
+          export HERMES_CLICK_HBC="$DIR/hbc/click.hbc"
+          export HERMES_FRAMEWORK_HBC="$DIR/hbc/${FRAMEWORK}.hbc"
+          exec "$DIR/hello_world"
+          SH
+          chmod +x "$pkg/run.sh"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: gpui-linux-live-hermes-package-debug
+          path: results/linux-live-hermes-package-debug/
           retention-days: 14

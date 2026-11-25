@@ -106,3 +106,33 @@ jobs:
           name: gpui-macos-live-hermes-svelte-solid-evidence
           path: results/macos-gpui/
           retention-days: 14
+      - name: Stage runnable macOS live-Hermes debug package
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg=results/macos-live-hermes-package-debug
+          hbc_dir=results/live-hermes/crates/hermes-gpui-spike/target
+          rm -rf "$pkg"
+          mkdir -p "$pkg/hbc"
+          cp .zed-source/target/debug/examples/hello_world "$pkg/hello_world"
+          chmod +x "$pkg/hello_world"
+          cp "$hbc_dir/bootstrap.hbc" "$hbc_dir/click.hbc" "$hbc_dir/svelte.hbc" "$hbc_dir/solid.hbc" "$pkg/hbc/"
+          cat > "$pkg/run.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          FRAMEWORK="${1:-svelte}"
+          export HERMES_FRAMEWORK="$FRAMEWORK"
+          export HERMES_BOOTSTRAP_HBC="$DIR/hbc/bootstrap.hbc"
+          export HERMES_CLICK_HBC="$DIR/hbc/click.hbc"
+          export HERMES_FRAMEWORK_HBC="$DIR/hbc/${FRAMEWORK}.hbc"
+          exec "$DIR/hello_world"
+          SH
+          chmod +x "$pkg/run.sh"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: gpui-macos-live-hermes-package-debug
+          path: results/macos-live-hermes-package-debug/
+          retention-days: 14

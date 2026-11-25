@@ -153,3 +153,41 @@ jobs:
           name: gpui-web-official-canvas-svelte-solid
           path: results/gpui-web/
           retention-days: 30
+      - name: Stage runnable Web release package
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg=results/gpui-web-package-release
+          rm -rf "$pkg"
+          mkdir -p "$pkg"
+          cp -a .zed-source/crates/gpui_web/examples/hello_web/dist/. "$pkg/"
+          cat > "$pkg/serve.py" <<'PY'
+          #!/usr/bin/env python3
+          import http.server
+          from pathlib import Path
+
+          PORT = 8975
+          ROOT = Path(__file__).resolve().parent
+
+          class Handler(http.server.SimpleHTTPRequestHandler):
+              def __init__(self, *args, **kwargs):
+                  super().__init__(*args, directory=str(ROOT), **kwargs)
+              def end_headers(self):
+                  self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+                  self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
+                  super().end_headers()
+
+          host = "127.0.0.1"
+          print(f"Serving {ROOT} on {host}:{PORT}")
+          print(f"  Svelte (live): http://{host}:{PORT}/?mode=live&f=svelte")
+          print(f"  Solid  (live): http://{host}:{PORT}/?mode=live&f=solid")
+          http.server.ThreadingHTTPServer((host, PORT), Handler).serve_forever()
+          PY
+          chmod +x "$pkg/serve.py"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: gpui-web-live-hermes-package-release
+          path: results/gpui-web-package-release/
+          retention-days: 30

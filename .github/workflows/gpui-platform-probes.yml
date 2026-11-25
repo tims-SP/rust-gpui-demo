@@ -302,6 +302,9 @@ jobs:
               -derivedDataPath "$derived" build 2>&1 | tee "$out/$framework-build.log" | tail -100
             app="$derived/Build/Products/Debug-iphonesimulator/GpuiExample.app"
             test -d "$app"
+            pkg_out="$GITHUB_WORKSPACE/results/ios-live-hermes-packages"
+            mkdir -p "$pkg_out"
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$pkg_out/$framework-iphonesimulator-debug.app.zip"
             xcrun simctl terminate "$udid" dev.gpui.mobile.example >/dev/null 2>&1 || true
             xcrun simctl install "$udid" "$app"
             xcrun simctl spawn "$udid" log stream --level info --style compact \
@@ -335,6 +338,12 @@ jobs:
         with:
           name: gpui-ios-live-hermes-svelte-solid-evidence
           path: results/ios-live-hermes/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-ios-live-hermes-sim-apps-debug
+          path: results/ios-live-hermes-packages/
           retention-days: 14
 
   android-live-hermes-arm64-build:
