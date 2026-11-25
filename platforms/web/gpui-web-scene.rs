@@ -77,7 +77,6 @@ impl BenchView {
             if let Some(txt) = items.get(2).and_then(Value::as_str) {
               if let Some(first_row) = self.rows.first_mut() {
                 *first_row = txt.to_owned();
-                changed = true;
               }
             }
             self.count += 1;
