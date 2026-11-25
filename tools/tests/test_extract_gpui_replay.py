@@ -1,0 +1,82 @@
+import json
+import unittest
+from pathlib import Path
+import importlib.util
+
+root = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location("metrics", root / "extract-gpui-replay.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+def log(**updates):
+    d = {"schema": "gpui-render-replay/v1", "framework": "svelte",
+         "live_jsi_to_gpui": False, "live_hermes_vm": False,
+         "source": "precomputed-Hermes-scene", "driver": "gpui-timer-internal",
+         "metric": "notify_to_render_callback_us_NOT_GPU_present",
+         "scheduled_updates": 120, "applied_updates": 120,
+         "render_callbacks_with_pending_update": 115,
+         "p50_us": 350, "p95_us": 800, "p99_us": 1200}
+    d.update(updates)
+    return "GPUI_WINDOW_CREATED\nGPUI_REPLAY_BENCH_RESULT:" + json.dumps(d) + "\nGPUI_REPLAY_BENCH_PASS:svelte\n"
+
+class TestExtract(unittest.TestCase):
+    def test_positive(self):
+        self.assertEqual(mod.extract(log(), "svelte")["p50_us"], 350)
+    def test_missing_marker(self):
+        with self.assertRaises(ValueError): mod.extract("GPUI_WINDOW_CREATED", "svelte")
+    def test_wrong_framework(self):
+        with self.assertRaises(ValueError): mod.extract(log(), "solid")
+    def test_incomplete(self):
+        with self.assertRaises(ValueError): mod.extract(log(applied_updates=119), "svelte")
+    def test_claim_falsification(self):
+        with self.assertRaises(ValueError): mod.extract(log(live_jsi_to_gpui=True), "svelte")
+    def test_no_render(self):
+        with self.assertRaises(ValueError): mod.extract(log(render_callbacks_with_pending_update=0), "svelte")
+    def test_repeated_results(self):
+        with self.assertRaises(ValueError): mod.extract(log()+log(), "svelte")
+    def test_ios_unified_logging_prefix(self):
+        # iOS/macOS unified logging adds timestamp/process metadata before
+        # the Rust payload. The result record must still be parsed strictly.
+        raw = log()
+        raw = "\n".join(
+            "2026-11-24 12:00:00.000 Df GpuiExample[123:456] [INFO] " + line
+            if line.startswith("GPUI_REPLAY_BENCH_RESULT:") else line
+            for line in raw.splitlines()
+        )
+        self.assertEqual(mod.extract(raw, "svelte")["p50_us"], 350)
+    def test_missing_replay_source_rejected(self):
+        with self.assertRaises(ValueError): mod.extract(log(source="precomputed-Hermes-JSON"), "svelte")
+    def test_valid_live_hbc_jsi_record(self):
+        live = log(
+            source="live-Hermes-HBC-in-process",
+            driver="gpui-timer-repeated-framework-click-hbc",
+            metric="jsi_mutation_to_render_callback_us_NOT_GPU_present",
+            live_jsi_to_gpui=True, live_hermes_vm=True,
+            initial_hermes_mutation_batches=7,
+            interactive_hermes_mutation_batches=120,
+            hermes_mutation_batches=127,
+            gpu_present_latency_ms=None, end_to_end_latency_ms=None)
+        self.assertTrue(mod.extract(live, "svelte")["live_jsi_to_gpui"])
+    def test_valid_mobile_live_hbc_jsi_record(self):
+        live = log(
+            source="live-Hermes-HBC-in-process",
+            driver="gpui-mobile-timer-repeated-framework-click-hbc",
+            metric="jsi_mutation_to_render_callback_us_NOT_GPU_present",
+            live_jsi_to_gpui=True, live_hermes_vm=True,
+            initial_hermes_mutation_batches=7,
+            interactive_hermes_mutation_batches=120,
+            hermes_mutation_batches=127,
+            gpu_present_latency_ms=None, end_to_end_latency_ms=None)
+        self.assertTrue(mod.extract(live, "svelte")["live_jsi_to_gpui"])
+    def test_live_record_requires_mutation_batches(self):
+        live = log(
+            source="live-Hermes-HBC-in-process",
+            driver="gpui-timer-repeated-framework-click-hbc",
+            metric="jsi_mutation_to_render_callback_us_NOT_GPU_present",
+            live_jsi_to_gpui=True, live_hermes_vm=True,
+            initial_hermes_mutation_batches=7,
+            interactive_hermes_mutation_batches=119,
+            hermes_mutation_batches=126)
+        with self.assertRaises(ValueError): mod.extract(live, "svelte")
+
+if __name__ == "__main__": unittest.main()

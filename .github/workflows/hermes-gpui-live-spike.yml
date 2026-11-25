@@ -1,0 +1,53 @@
+name: Live Svelte and Solid Hermes HBC to JSI Rust scene
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/gpui-frame-bench]
+    paths:
+      - 'crates/hermes-gpui-spike/**'
+      - 'apps/**'
+      - 'shared/**'
+      - 'renderers/**'
+      - 'tools/build.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/hermes-gpui-live-spike.yml'
+permissions:
+  contents: read
+jobs:
+  live-hermes-framework-bridge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Build the real Svelte and Solid framework bundles
+        run: npm ci && npm run build
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '1.97.0'
+          cache: false
+      - name: Install native Hermes build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y clang cmake ninja-build libicu-dev pkg-config
+      - name: Execute real framework HBC and deliver dynamic JSI mutations into Rust
+        run: |
+          set -euo pipefail
+          mkdir -p results/gpui-hermes-spike
+          cargo run --locked --manifest-path crates/hermes-gpui-spike/Cargo.toml --release \
+            | tee results/gpui-hermes-spike/runtime.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: live-svelte-solid-hermes-jsi-rust-scene
+          path: |
+            crates/hermes-gpui-spike/Cargo.lock
+            crates/hermes-gpui-spike/target/bootstrap.hbc
+            crates/hermes-gpui-spike/target/click.hbc
+            crates/hermes-gpui-spike/target/svelte.hbc
+            crates/hermes-gpui-spike/target/solid.hbc
+            results/gpui-hermes-spike/runtime.log
+          retention-days: 14

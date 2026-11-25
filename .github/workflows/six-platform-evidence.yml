@@ -1,0 +1,37 @@
+name: Six-platform benchmark evidence matrix
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 1 * * *'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: six-platform-evidence
+  cancel-in-progress: true
+jobs:
+  validate-and-aggregate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify fail-closed benchmark parsers
+        run: python3 -m unittest discover -s tools/tests -p 'test_*.py' -v
+      - name: Download independent platform evidence and build 12-cell matrix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/collect-six-platform.py --repo "${{ github.repository }}" --out results/six-platform
+          cat results/six-platform/REPORT.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive compact verified data and provenance (exclude large APKs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: six-platform-svelte-solid-benchmark-matrix
+          path: |
+            results/six-platform/REPORT.md
+            results/six-platform/matrix.json
+            results/six-platform/sources.json
+            results/six-platform/*/*-metrics.json
+            results/six-platform/*/*-g1.json
+          retention-days: 30

@@ -6,7 +6,10 @@ on:
       - '.github/workflows/gpui-web-canvas.yml'
       - 'platforms/web/gpui-web-scene.rs'
       - 'platforms/web/gpui-web-scene.html'
+      - 'platforms/web/gpui-web-live-driver.js'
+      - 'platforms/web/bootstrap-web.js'
       - 'platforms/web/verify-gpui-canvas.py'
+      - 'platforms/web/verify-gpui-live.py'
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,12 +26,28 @@ jobs:
           ref: v1.29.3
           path: .zed-source
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: meta/hermes
+          ref: d412d3bd851278712c20cca25d094e32641a0465
+          path: .hermes-source
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/download-artifact@v4
         with:
           name: real-ibex2-hermes-framework-benchmarks
           run-id: 45197307921
           github-token: ${{ github.token }}
           path: results/hermes/
+      - name: Download pinned same-revision Hermes JSI WebAssembly VM
+        uses: actions/download-artifact@v4
+        with:
+          name: hermes-vm-webassembly-browser
+          run-id: 45187557146
+          github-token: ${{ github.token }}
+          path: results/hermes-web/
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: nightly
@@ -38,17 +57,41 @@ jobs:
       - name: Install official GPUI Web build tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config python3-pil curl
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config python3-pil libreadline-dev curl
           cargo install trunk --locked
+      - name: Build real Svelte and Solid bundles and compile HBC v99 with pinned hermesc
+        run: |
+          set -euo pipefail
+          npm install --no-audit --no-fund
+          npm run build
+          cmake -S .hermes-source -B .hermes-host -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DHERMES_ENABLE_TEST_SUITE=OFF -DHERMES_ENABLE_NAPI=OFF
+          cmake --build .hermes-host --target hermesc --parallel 3
+          test -x .hermes-host/bin/hermesc
+          mkdir -p results/hermes-web/live
+          .hermes-host/bin/hermesc -O -emit-binary \
+            -out results/hermes-web/live/bootstrap.hbc platforms/web/bootstrap-web.js
+          .hermes-host/bin/hermesc -O -emit-binary \
+            -out results/hermes-web/live/click.hbc crates/hermes-gpui-spike/click.js
+          for f in svelte solid; do
+            .hermes-host/bin/hermesc -O -emit-binary \
+              -out "results/hermes-web/live/$f.hbc" "dist/$f.js"
+            test -s "results/hermes-web/live/$f.hbc"
+          done
+          sha256sum results/hermes-web/live/*.hbc > results/hermes-web/live/hbc-hashes.txt
       - name: Overlay actual Hermes scenes onto upstream GPUI Web example
         run: |
           set -euo pipefail
+          repo_root="$(pwd)"
           sample=.zed-source/crates/gpui_web/examples/hello_web
           cp platforms/web/gpui-web-scene.rs "$sample/main.rs"
           cp platforms/web/gpui-web-scene.html "$sample/index.html"
           cp results/hermes/svelte.json "$sample/scene-svelte.json"
           cp results/hermes/solid.json "$sample/scene-solid.json"
           echo 'serde_json = "1"' >> "$sample/Cargo.toml"
+          echo "gpui-ui-mutation = { path = \"$repo_root/crates/ui-mutation\" }" >> "$sample/Cargo.toml"
           test -s "$sample/scene-svelte.json" && test -s "$sample/scene-solid.json"
       - name: Compile official GPUI Web Canvas renderer using WebAssembly
         working-directory: .zed-source/crates/gpui_web/examples/hello_web
@@ -56,11 +99,26 @@ jobs:
           RUSTUP_TOOLCHAIN: nightly
           CARGO_BUILD_JOBS: '3'
         run: trunk build --release --public-url /
+      - name: Stage Hermes WASM runtime and HBC v99 bundles into same-origin dist
+        run: |
+          set -euo pipefail
+          dist=.zed-source/crates/gpui_web/examples/hello_web/dist
+          cp results/hermes-web/browser/hermes.js "$dist/hermes.js"
+          cp results/hermes-web/browser/hermes.wasm "$dist/hermes.wasm"
+          cp platforms/web/gpui-web-live-driver.js "$dist/gpui-web-live-driver.js"
+          cp results/hermes-web/live/bootstrap.hbc "$dist/bootstrap.hbc"
+          cp results/hermes-web/live/click.hbc "$dist/click.hbc"
+          cp results/hermes-web/live/svelte.hbc "$dist/svelte.hbc"
+          cp results/hermes-web/live/solid.hbc "$dist/solid.hbc"
+          ls -lh "$dist/"
+      - name: Install persistent browser automation (system Chrome only)
+        run: python3 -m pip install --user --break-system-packages --quiet 'playwright>=1.50,<2'
       - name: Launch and verify both framework scenes rendered in real Chromium
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p results/gpui-web
+          cp results/hermes-web/live/hbc-hashes.txt results/gpui-web/hbc-hashes.txt
           cat > results/gpui-web/serve.py <<'PY'
           import http.server
           class H(http.server.SimpleHTTPRequestHandler):
@@ -78,14 +136,15 @@ jobs:
             sleep 1
           done
           for f in svelte solid; do
-            timeout 140s google-chrome --headless=new --no-sandbox \
-              --enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader \
-              --disable-dev-shm-usage --window-size=1200,950 \
-              --virtual-time-budget=60000 \
-              --screenshot="$GITHUB_WORKSPACE/results/gpui-web/$f.png" \
-              "http://127.0.0.1:8975/?f=$f" \
-              > "results/gpui-web/$f-stdout.log" 2> "results/gpui-web/$f-stderr.log"
+            python3 platforms/web/verify-gpui-live.py \
+              --url "http://127.0.0.1:8975/?mode=live&f=$f" \
+              --screenshot "results/gpui-web/$f.png" \
+              --dom "results/gpui-web/$f-dom.html" \
+              --log "results/gpui-web/$f-live-browser.log"
             python3 platforms/web/verify-gpui-canvas.py "results/gpui-web/$f.png"
+            python3 tools/extract-gpui-web.py \
+              --dom "results/gpui-web/$f-dom.html" --framework "$f" --require-live \
+              --out "results/gpui-web/$f-metrics.json"
           done
           echo GPUI_WEB_REAL_CANVAS_BOTH_SCENES_PASS
       - uses: actions/upload-artifact@v4

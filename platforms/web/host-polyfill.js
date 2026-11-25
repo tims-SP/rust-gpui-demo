@@ -8,7 +8,12 @@ if (!globalThis.__gpuiShimInitialized) {
   globalThis.__forwardMutations = false;
   globalThis.gpuiEmit = function(payload) {
     if (globalThis.__forwardMutations) {
-      console.log("HERMES_MUTATION_BATCH:" + payload);
+      const text = String(payload);
+      console.log("HERMES_MUTATION_BATCH:" + text);
+      const bridge = globalThis.__gpuiWebBridge;
+      if (bridge && typeof bridge.pushBatch === "function") {
+        bridge.pushBatch(text);
+      }
     }
   };
 } else {

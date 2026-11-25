@@ -1,13 +1,35 @@
 name: GPUI Windows macOS iOS Android build feasibility
 on:
   push:
-    branches: [main]
-    paths: ['.github/workflows/gpui-platform-probes.yml']
+    branches: [main, feature/gpui-frame-bench]
+    paths: ['.github/workflows/gpui-platform-probes.yml', 'platforms/mobile/**', 'tools/verify-mobile-live-image.py']
   workflow_dispatch:
+    inputs:
+      live_mobile_hermes:
+        description: "Run real Hermes HBC/JSI in GPUI Mobile iOS Simulator and/or Android ARM64 emulator"
+        type: boolean
+        required: false
+        default: false
+      live_mobile_target:
+        description: "Which mobile target to execute when live_mobile_hermes is enabled"
+        type: choice
+        options:
+          - both
+          - ios
+          - android
+        required: false
+        default: both
+      android_apk_artifact_run_id:
+        description: "Reuse ARM64 live-Hermes APKs from a prior successful workflow run instead of rebuilding"
+        type: string
+        required: false
+        default: ""
 permissions:
   contents: read
+  actions: read
 jobs:
   desktop-gpui-compile:
+    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +53,21 @@ jobs:
           cache: false
       - name: Insert real Hermes scene GPUI view into upstream example
         shell: bash
-        run: cp platforms/native/bench_view.rs .zed-source/crates/gpui/examples/hello_world.rs
+        run: |
+          set -euo pipefail
+          cp platforms/native/bench_view.rs .zed-source/crates/gpui/examples/hello_world.rs
+          python3 - <<'PYDEP'
+          from pathlib import Path
+          manifest = Path('.zed-source/crates/gpui/Cargo.toml')
+          content = manifest.read_text()
+          dependency = 'gpui-hermes-live-spike = { path = "../../../crates/hermes-gpui-spike" }\n'
+          if dependency not in content:
+              marker = '[dev-dependencies]\n'
+              if marker not in content:
+                  raise SystemExit('GPUI Cargo.toml has no dev-dependencies section')
+              content = content.replace(marker, marker + dependency, 1)
+              manifest.write_text(content)
+          PYDEP
       - name: Compile desktop GPUI example
         shell: bash
         working-directory: .zed-source
@@ -42,6 +78,7 @@ jobs:
         shell: bash
         run: echo "GPUI_DESKTOP_COMPILE_PASS:${{ matrix.label }}"
   ios-gpui-compile:
+    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -61,6 +98,7 @@ jobs:
           cargo check -p gpui_ios --target aarch64-apple-ios-sim
           echo GPUI_IOS_BACKEND_COMPILE_PASS
   android-gpui-mobile-compile:
+    if: ${{ !inputs.live_mobile_hermes && github.event_name != 'push' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -87,6 +125,7 @@ jobs:
 
 
   android-gpui-mobile-apk:
+    if: ${{ !inputs.live_mobile_hermes && (github.event_name != 'push' || github.ref != 'refs/heads/feature/gpui-frame-bench' || !contains(github.event.head_commit.message, '[android]')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -139,4 +178,727 @@ jobs:
         with:
           name: gpui-mobile-android-arm64-apk
           path: .gpui-mobile/example/android/gradle/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+
+  ios-live-hermes-window:
+    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'android') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[ios]')) }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: live-svelte-solid-hermes-jsi-rust-scene
+          run-id: 45295492997
+          github-token: ${{ github.token }}
+          path: results/live-hermes
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-apple-ios-sim
+          cache: false
+      - name: Prepare pinned GPUI Mobile example for live Hermes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 platforms/mobile/prepare_live_hermes.py --example .gpui-mobile/example --repo "$GITHUB_WORKSPACE"
+          python3 - <<'PY'
+          from pathlib import Path
+          project = Path('.gpui-mobile/example/ios/project.yml')
+          text = project.read_text()
+          old = '          cargo build --lib --target "${RUST_TARGET}" ${CARGO_FLAGS}'
+          cargo = 'cargo build --lib --features live-hermes --target "${RUST_TARGET}" ${CARGO_FLAGS}'
+          lines = [
+              'export CARGO_TARGET_DIR="${RUST_PROJECT_DIR}/target"',
+              cargo,
+              'if [ "${CONFIGURATION}" = "Release" ]; then CARGO_PROFILE_DIR=release; else CARGO_PROFILE_DIR=debug; fi',
+              'EXPECTED_STATIC_LIB="${CARGO_TARGET_DIR}/${RUST_TARGET}/${CARGO_PROFILE_DIR}/libgpui_mobile_example.a"',
+              'if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then',
+              '  FOUND_STATIC_LIB="$(find "${CARGO_TARGET_DIR}" -type f -name libgpui_mobile_example.a -print -quit)"',
+              '  if [ -n "${FOUND_STATIC_LIB}" ]; then',
+              '    mkdir -p "$(dirname "${EXPECTED_STATIC_LIB}")"',
+              '    cp "${FOUND_STATIC_LIB}" "${EXPECTED_STATIC_LIB}"',
+              '  fi',
+              'fi',
+              'if [ ! -s "${EXPECTED_STATIC_LIB}" ]; then',
+              '  echo "ERROR: Cargo completed but iOS static library is missing: ${EXPECTED_STATIC_LIB}"',
+              '  echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"',
+              '  find "${CARGO_TARGET_DIR}" -type f -name "*.a" -print | head -100 || true',
+              '  exit 1',
+              'fi',
+              'echo "IOS_RUST_STATIC_LIBRARY_PASS:${EXPECTED_STATIC_LIB}"',
+              'ls -lh "${EXPECTED_STATIC_LIB}"',
+          ]
+          new = "\n".join("          " + line for line in lines)
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('Could not locate the GPUI Mobile iOS Rust build command')
+              text = text.replace(old, new, 1)
+          output_marker = '      - name: "Build Rust Static Library"\n        script: |\n'
+          output_phase = ('      - name: "Build Rust Static Library"\n'
+                          '        outputFiles:\n'
+                          '          - "$(EXAMPLE_STATIC_LIB)"\n'
+                          '        script: |\n')
+          if '        outputFiles:\n          - "$(EXAMPLE_STATIC_LIB)"\n' not in text:
+              if output_marker not in text:
+                  raise SystemExit('Could not locate XcodeGen Build Rust Static Library phase')
+              text = text.replace(output_marker, output_phase, 1)
+          project.write_text(text)
+          PY
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen --version
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-path
+      - name: Install screenshot validation dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_venv="$RUNNER_TEMP/gpui-image-venv"
+          python3 -m venv "$image_venv"
+          "$image_venv/bin/python" -m pip install --disable-pip-version-check Pillow
+          echo "GPUI_IMAGE_PYTHON=$image_venv/bin/python" >> "$GITHUB_ENV"
+          "$image_venv/bin/python" -c 'import PIL; print(f"Pillow {PIL.__version__}")'
+      - name: Build and run live Hermes on iOS Simulator for both frameworks
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/results/ios-live-hermes"
+          hbc="$GITHUB_WORKSPACE/results/live-hermes/crates/hermes-gpui-spike/target"
+          example="$GITHUB_WORKSPACE/.gpui-mobile/example"
+          mkdir -p "$out"
+          xcrun simctl list devices available -j > "$out/devices.json"
+          udid="$(python3 -c 'import json; d=json.load(open("'"$out/devices.json"'")); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))' )"
+          test -n "$udid"
+          xcrun simctl boot "$udid" 2>/dev/null || true
+          python3 - "$udid" <<'PYBOOT'
+          import subprocess, sys
+          udid = sys.argv[1]
+          try:
+              subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"],
+                             check=True, timeout=300)
+          except subprocess.TimeoutExpired:
+              subprocess.run(["xcrun", "simctl", "list", "devices", "booted"], check=False)
+              raise SystemExit("iOS Simulator bootstatus timed out after 300 seconds")
+          PYBOOT
+          cd "$example/ios"
+          xcodegen generate
+          for framework in svelte solid; do
+            export GPUI_LIVE_HERMES_FRAMEWORK="$framework"
+            export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
+            export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
+            export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
+            echo "Reusing Cargo target cache: $example/target/aarch64-apple-ios-sim"
+            derived="$GITHUB_WORKSPACE/.derived-ios-$framework"
+            rm -rf "$derived"
+            set -o pipefail
+            xcodebuild -project GpuiExample.xcodeproj -scheme GpuiExample \
+              -configuration Debug -destination "id=$udid" \
+              -derivedDataPath "$derived" build 2>&1 | tee "$out/$framework-build.log" | tail -100
+            app="$derived/Build/Products/Debug-iphonesimulator/GpuiExample.app"
+            test -d "$app"
+            xcrun simctl terminate "$udid" dev.gpui.mobile.example >/dev/null 2>&1 || true
+            xcrun simctl install "$udid" "$app"
+            xcrun simctl spawn "$udid" log stream --level info --style compact \
+              --predicate 'process == "GpuiExample"' > "$out/$framework-runtime.log" 2>&1 &
+            logpid=$!
+            xcrun simctl launch "$udid" dev.gpui.mobile.example
+            passed=false
+            for tick in $(seq 1 75); do
+              if grep -q "GPUI_LIVE_HERMES_PASS:$framework" "$out/$framework-runtime.log"; then passed=true; break; fi
+              if ! kill -0 "$logpid" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            if [[ "$passed" != true ]]; then
+              xcrun simctl spawn "$udid" log show --last 3m --style compact \
+                --predicate 'process == "GpuiExample"' >> "$out/$framework-runtime.log" 2>&1 || true
+              cat "$out/$framework-runtime.log"
+              kill "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+            python3 "$GITHUB_WORKSPACE/tools/extract-gpui-replay.py" \
+              --log "$out/$framework-runtime.log" --framework "$framework" \
+              --platform ios --out "$out/$framework-metrics.json"
+            xcrun simctl io "$udid" screenshot "$out/$framework.png"
+            "$GPUI_IMAGE_PYTHON" "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
+            kill "$logpid" 2>/dev/null || true
+            xcrun simctl terminate "$udid" dev.gpui.mobile.example >/dev/null 2>&1 || true
+          done
+          echo GPUI_IOS_LIVE_HERMES_TWO_FRAMEWORKS_PASS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-ios-live-hermes-svelte-solid-evidence
+          path: results/ios-live-hermes/
+          retention-days: 14
+
+  android-live-hermes-arm64-build:
+    name: android-live-hermes-arm64-build
+    if: ${{ (inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios' && inputs.android_apk_artifact_run_id == '') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: itsbalamurali/gpui-mobile
+          ref: 5fd54f4554263ae06753e90472c7f2e2ff5d7495
+          path: .gpui-mobile
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: live-svelte-solid-hermes-jsi-rust-scene
+          run-id: 45295492997
+          github-token: ${{ github.token }}
+          path: results/live-hermes
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android
+          cache: false
+      - name: Install ARM64 Android build toolchain
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +o pipefail
+          yes | sdkmanager --licenses
+          license_status=${PIPESTATUS[1]}
+          set -o pipefail
+          test "$license_status" -eq 0
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+      - name: Prepare pinned GPUI Mobile example and Gradle mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Apply the vendored Apache-2.0 gpui-pre-wgpu 0.3.6 GLES-only backport
+          # strictly for Android emulator CI. SwiftShader Vulkan on emulator 37.2.13
+          # crashes QEMU with "SPIR-V ERROR: 0:0 Invalid source language operand: 10"
+          # during WgpuRenderer shader compilation; GLES_ONLY avoids that crash.
+          cp -a platforms/mobile/vendor/gpui-pre-wgpu-0.3.6 .gpui-mobile/benchmark-gpui-pre-wgpu
+          python3 - <<'PYBACKPORT'
+          from pathlib import Path
+          root = Path(".gpui-mobile")
+          for path, relative in [
+              (root / "Cargo.toml", "benchmark-gpui-pre-wgpu"),
+              (root / "example" / "Cargo.toml", "../benchmark-gpui-pre-wgpu"),
+          ]:
+              content = path.read_text()
+              if "[patch.crates-io]" in content:
+                  raise SystemExit(f"Unexpected existing cargo registry patch: {path}")
+              path.write_text(content + '\n[patch.crates-io]\ngpui-pre-wgpu = { path = "' + relative + '" }\n')
+          root_cargo = root / "Cargo.toml"
+          s = root_cargo.read_text()
+          old_dep = 'gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6" }'
+          new_dep = 'gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.6", features = ["android-gles-only"] }'
+          if s.count(old_dep) != 1:
+              raise SystemExit(f"Unknown upstream Android renderer dependency in {root_cargo}")
+          root_cargo.write_text(s.replace(old_dep, new_dep, 1))
+          print("GPUI_ANDROID_EMULATOR_GLES_ONLY_ENABLED")
+          PYBACKPORT
+          python3 platforms/mobile/prepare_live_hermes.py --example .gpui-mobile/example --repo "$GITHUB_WORKSPACE"
+          cargo metadata --manifest-path .gpui-mobile/example/Cargo.toml --format-version 1 \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); p=[p for p in d["packages"] if p["name"] == "gpui-pre-wgpu"]; assert len(p)==1 and "benchmark-gpui-pre-wgpu" in p[0]["manifest_path"], p; print("GPUI_ANDROID_PATCH_RESOLVED:", p[0]["manifest_path"])'
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          mirror = 'maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }'
+          for relative in ("android/gradle/settings.gradle.kts", "android/gradle/build.gradle.kts"):
+              path = Path(".gpui-mobile/example") / relative
+              content = path.read_text()
+              content = re.sub(r"(?m)^(\s*)mavenCentral\(\)$",
+                               lambda match: match.group(1) + mirror + "\n" + match.group(1) + "mavenCentral()",
+                               content)
+              path.write_text(content)
+          PY
+          cargo install cargo-ndk --locked
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          test -d "$ANDROID_NDK_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> "$GITHUB_ENV"
+      - name: Build Svelte and Solid ARM64 live-Hermes APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/results/android-live-hermes-build"
+          hbc="$GITHUB_WORKSPACE/results/live-hermes/crates/hermes-gpui-spike/target"
+          example="$GITHUB_WORKSPACE/.gpui-mobile/example"
+          mkdir -p "$out"
+          cd "$example"
+          for framework in svelte solid; do
+            export GPUI_LIVE_HERMES_FRAMEWORK="$framework"
+            export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
+            export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
+            export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
+            rm -rf android/gradle/app/src/main/jniLibs/arm64-v8a
+            cargo ndk -t arm64-v8a -P 31 -o android/gradle/app/src/main/jniLibs \
+              build --lib --features live-hermes
+            # cargo-ndk stages the Rust .so files, but this project links against
+            # the NDK shared C++ runtime. Because this is an externally-built
+            # JNI library, Gradle does not discover/package libc++_shared.so for us.
+            libcxx_shared="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"
+            if [[ ! -s "$libcxx_shared" ]]; then
+              echo "ANDROID_NDK_LIBCXX_SHARED_MISSING:$libcxx_shared"
+              find "$ANDROID_NDK_HOME/sysroot/usr/lib" -name libc++_shared.so -print || true
+              exit 1
+            fi
+            install -D -m 0644 "$libcxx_shared" android/gradle/app/src/main/jniLibs/arm64-v8a/libc++_shared.so
+            test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libgpui_mobile_example.so
+            test -s android/gradle/app/src/main/jniLibs/arm64-v8a/libc++_shared.so
+            echo ANDROID_ARM64_LIBCXX_SHARED_STAGED
+            (
+              cd android/gradle
+              chmod +x ./gradlew
+              ./gradlew :app:assembleDebug --no-daemon --stacktrace
+            )
+            apk="android/gradle/app/build/outputs/apk/debug/app-debug.apk"
+            test -s "$apk"
+            python3 - "$apk" <<'PYAPK'
+          import sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as apk:
+              names = set(apk.namelist())
+              required = {
+                  "lib/arm64-v8a/libgpui_mobile_example.so",
+                  "lib/arm64-v8a/libgpui_mobile.so",
+                  "lib/arm64-v8a/libc++_shared.so",
+              }
+              missing = sorted(required - names)
+              assert not missing, f"Required ARM64 native libraries missing from APK: {missing}"
+          print("GPUI_ANDROID_ARM64_APK_NATIVE_DEPENDENCIES_PASS")
+          PYAPK
+            cp "$apk" "$out/$framework.apk"
+          done
+          echo GPUI_ANDROID_ARM64_LIVE_HERMES_APK_BUILD_PASS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-android-arm64-live-hermes-apks
+          path: results/android-live-hermes-build/
+          retention-days: 14
+
+  android-live-hermes-window:
+    name: android-live-hermes-arm64-native-bridge-window
+    needs: android-live-hermes-arm64-build
+    if: ${{ !cancelled() && (needs.android-live-hermes-arm64-build.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.android_apk_artifact_run_id != '')) && ((inputs.live_mobile_hermes && inputs.live_mobile_target != 'ios') || (github.event_name == 'push' && github.ref == 'refs/heads/feature/gpui-frame-bench' && contains(github.event.head_commit.message, '[android]')))}}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: gpui-android-arm64-live-hermes-apks
+          run-id: ${{ inputs.android_apk_artifact_run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: results/android-live-hermes
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install screenshot validation dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_venv="$RUNNER_TEMP/gpui-image-venv"
+          python3 -m venv "$image_venv"
+          "$image_venv/bin/python" -m pip install --disable-pip-version-check Pillow
+          echo "GPUI_IMAGE_PYTHON=$image_venv/bin/python" >> "$GITHUB_ENV"
+          "$image_venv/bin/python" -c 'import PIL; print(f"Pillow {PIL.__version__}")'
+      - name: Install pinned x86_64 Emulator and ARM64 Native Bridge image
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(dpkg --print-architecture)" = amd64
+          test -n "$ANDROID_HOME"
+          sudo apt-get update
+          sudo apt-get install -y libpulse0 libpcre2-16-0
+          mkdir -p "$ANDROID_HOME" "$GITHUB_WORKSPACE/results/android-live-hermes"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          command -v sdkmanager
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          set +o pipefail
+          yes | sdkmanager --licenses
+          license_status=$?
+          set -o pipefail
+          test "$license_status" -eq 0
+
+          # Android 11+ Google APIs x86_64 images include ARM64 Native Bridge.
+          # The Android OS is x86_64; only the application's ARM64 native code
+          # is translated. This is not a native ARM64 kernel/emulator run.
+          sdkmanager --install \
+            "emulator" \
+            "platforms;android-35" \
+            "system-images;android-35;google_apis;x86_64"
+
+          emulator_zip="$RUNNER_TEMP/emulator-linux_x64-16740729.zip"
+          emulator_url="https://dl.google.com/android/repository/emulator-linux_x64-16740729.zip"
+          emulator_sha256="cbc7c3cfb83220b8a0f9c513fdab557712e74d339ec19ddffa43f23350ae9bdd"
+          curl --fail --location --retry 3 "$emulator_url" --output "$emulator_zip"
+          echo "$emulator_sha256  $emulator_zip" | sha256sum --check
+          emulator_unpack="$RUNNER_TEMP/pinned-emulator-37.2.13"
+          mkdir -p "$emulator_unpack"
+          unzip -q "$emulator_zip" -d "$emulator_unpack"
+          source_properties="$emulator_unpack/emulator/source.properties"
+          grep -Fxq "Pkg.Revision=37.2.13" "$source_properties"
+          test -x "$emulator_unpack/emulator/emulator"
+
+          # Keep SDK package registration while pinning the exact executable.
+          cp "$ANDROID_HOME/emulator/package.xml" "$RUNNER_TEMP/emulator-package.xml"
+          rm -rf "$ANDROID_HOME/emulator"
+          mv "$emulator_unpack/emulator" "$ANDROID_HOME/emulator"
+          cp "$RUNNER_TEMP/emulator-package.xml" "$ANDROID_HOME/emulator/package.xml"
+          # Keep the valid SDK Manager package.xml intact. Re-serializing it
+          # with Python ElementTree changes the Android SDK package metadata;
+          # avdmanager then treats the emulator package as uninstalled.
+          # The pinned executable is verified independently via version + SHA.
+
+
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          emulator_version="$("$emulator_bin" -version 2>&1 | head -n 1)"
+          echo "ANDROID_EMULATOR_VERSION=$emulator_version"
+          [[ "$emulator_version" == *"37.2.13"* ]]
+          file "$emulator_bin" | tee "$GITHUB_WORKSPACE/results/android-live-hermes/emulator-host-binary.txt"
+          sha256sum "$emulator_bin" | tee "$GITHUB_WORKSPACE/results/android-live-hermes/emulator-host-binary.sha256"
+          "$ANDROID_HOME/platform-tools/adb" version
+
+          # Fail here, before AVD creation, if the pinned binary replacement
+          # damaged SDK package registration again.
+          sdkmanager --list_installed | tee "$GITHUB_WORKSPACE/results/android-live-hermes/sdk-installed-packages.txt"
+          python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/sdk-installed-packages.txt" <<'PYSDK'
+          from pathlib import Path
+          import sys
+          lines = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace").splitlines()
+          installed = [line for line in lines if line.split("|", 1)[0].strip() == "emulator" and "|" in line]
+          if not installed:
+              raise SystemExit("SDK Manager does not recognize the installed emulator package; refusing to create AVD")
+          print("ANDROID_SDK_EMULATOR_PACKAGE_REGISTERED=" + installed[0].strip())
+          PYSDK
+
+          export ANDROID_USER_HOME="$RUNNER_TEMP/gpui-android-user"
+          export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_GUEST_SYSTEM_IMAGE=android-35;google_apis;x86_64"
+          echo "ANDROID_APP_NATIVE_ABI=arm64-v8a (Native Bridge translation)"
+
+      - name: Create and boot Android x86_64 guest for ARM64 Native Bridge
+        timeout-minutes: 45
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          test -n "$ANDROID_USER_HOME"
+          test -n "$ANDROID_AVD_HOME"
+          mkdir -p "$ANDROID_AVD_HOME"
+          printf 'no\n' | avdmanager create avd --force --name gpui-x86_64-arm64-bridge \
+            --package "system-images;android-35;google_apis;x86_64"
+          avdmanager list avd
+          test -s "$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.ini"
+          test -d "$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.avd"
+          avd_cfg="$ANDROID_AVD_HOME/gpui-x86_64-arm64-bridge.avd/config.ini"
+          python3 - "$avd_cfg" <<'PYCFG'
+          from pathlib import Path
+          import sys
+          cfg = Path(sys.argv[1])
+          lines = cfg.read_text().splitlines() if cfg.exists() else []
+          overrides = {
+              "hw.lcd.width": "1080",
+              "hw.lcd.height": "1920",
+              "hw.lcd.density": "420",
+              "skin.name": "1080x1920",
+          }
+          kept = [line for line in lines if line.split("=", 1)[0].strip() not in overrides]
+          for k, v in overrides.items():
+              kept.append(f"{k}={v}")
+          cfg.write_text("\n".join(kept) + "\n")
+          print("ANDROID_AVD_DISPLAY_CONFIGURED=1080x1920@420dpi")
+          PYCFG
+
+          emulator_bin="$ANDROID_HOME/emulator/emulator"
+          # The x86_64 guest is extremely slow under TCG on this runner: the prior
+          # run took 940 seconds to boot and Android killed the app before attach.
+          # /dev/kvm exists on the hosted runner but is group-restricted; grant the
+          # ephemeral runner user access and require a successful KVM preflight.
+          if [[ ! -c /dev/kvm ]]; then
+            echo "KVM_DEVICE_MISSING: /dev/kvm is unavailable on this runner"
+            exit 1
+          fi
+          sudo chmod 666 /dev/kvm
+          if [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            echo "KVM_DEVICE_NOT_ACCESSIBLE after permission adjustment"
+            ls -l /dev/kvm || true
+            exit 1
+          fi
+          accel_check="$( "$emulator_bin" -accel-check 2>&1 )" || {
+            printf "%s\\n" "$accel_check"
+            echo "ANDROID_EMULATOR_KVM_PREFLIGHT_FAILED"
+            exit 1
+          }
+          printf "%s\\n" "$accel_check"
+          if ! grep -Eiq "KVM.*(installed and usable|usable)" <<< "$accel_check"; then
+            echo "ANDROID_EMULATOR_KVM_NOT_USABLE"
+            exit 1
+          fi
+          "$emulator_bin" -avd gpui-x86_64-arm64-bridge -no-window -no-audio -no-boot-anim \
+            -accel on -gpu swiftshader_indirect -cores 2 \
+            -no-snapshot -no-snapshot-load -no-snapshot-save -no-metrics \
+            > results-android-emulator.log 2>&1 &
+          emulator_pid=$!
+          echo "$emulator_pid" > /tmp/gpui-live-emulator.pid
+          echo "ANDROID_EXECUTION_MODE=KVM_X86_64_GUEST_ARM64_NATIVE_BRIDGE"
+
+          print_startup_diagnostics() {
+            echo "--- emulator/QEMU process tree ---"
+            ps -eo pid,ppid,stat,etime,pcpu,pmem,args | grep -E '[e]mulator|[q]emu-system-x86_64' || true
+            echo "--- ADB devices ---"
+            timeout 10s adb devices -l || true
+            echo "--- Android boot properties ---"
+            timeout 10s adb shell getprop sys.boot_completed || true
+            echo "--- Emulator log ---"
+            cat results-android-emulator.log || true
+          }
+
+          qemu_pid=""
+          for tick in $(seq 1 45); do
+            qemu_pid="$(pgrep -f '[q]emu-system-x86_64' | head -n 1 || true)"
+            if [[ -n "$qemu_pid" ]]; then break; fi
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then
+              echo "Android Emulator exited before the x86_64 QEMU backend started"
+              print_startup_diagnostics
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ -z "$qemu_pid" ]]; then
+            echo "x86_64 QEMU backend was not visible within 45 seconds"
+            print_startup_diagnostics
+            exit 1
+          fi
+          echo "$qemu_pid" > /tmp/gpui-live-qemu.pid
+          echo "ANDROID_QEMU_BACKEND_PID=$qemu_pid"
+
+          assert_qemu_running() {
+            local state
+            state="$(ps -o stat= -p "$qemu_pid" 2>/dev/null | tr -d '[:space:]' || true)"
+            if [[ -z "$state" || "$state" == Z* ]]; then
+              echo "x86_64 QEMU backend exited before Android became ready (pid=$qemu_pid state=${state:-missing})"
+              print_startup_diagnostics
+              exit 1
+            fi
+          }
+
+          adb_deadline=$((SECONDS + 15 * 60))
+          device_ready=false
+          while (( SECONDS < adb_deadline )); do
+            if timeout 5s adb get-state 2>/dev/null | grep -qx device; then
+              device_ready=true
+              break
+            fi
+            assert_qemu_running
+            sleep 2
+          done
+          if [[ "$device_ready" != true ]]; then
+            echo "Timed out after 15 minutes waiting for Android ADB device (KVM)"
+            print_startup_diagnostics
+            exit 1
+          fi
+
+          boot_deadline=$((SECONDS + 25 * 60))
+          booted=false
+          while (( SECONDS < boot_deadline )); do
+            boot_state="$(timeout 7s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+            if [[ "$boot_state" == "1" ]]; then
+              booted=true
+              break
+            fi
+            assert_qemu_running
+            sleep 2
+          done
+          if [[ "$booted" != true ]]; then
+            echo "Timed out after 25 minutes waiting for Android sys.boot_completed (KVM)"
+            print_startup_diagnostics
+            exit 1
+          fi
+
+          abi_list="$(timeout 10s adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
+          native_bridge="$(timeout 10s adb shell getprop ro.dalvik.vm.native.bridge | tr -d '\r')"
+          bridge_lib="$(timeout 15s adb shell 'find /system /system_ext /vendor -type f -name "libndk_translation.so" 2>/dev/null | head -n 1' | tr -d '\r' || true)"
+          runtime_abi="$(timeout 10s adb shell getprop ro.product.cpu.abi | tr -d '\r')"
+          echo "ANDROID_RUNTIME_ABI=$runtime_abi"
+          echo "ANDROID_RUNTIME_ABILIST=$abi_list"
+          echo "ANDROID_NATIVE_BRIDGE=$native_bridge"
+          echo "ANDROID_NATIVE_BRIDGE_LIBRARY=$bridge_lib"
+          [[ ",$abi_list," == *",arm64-v8a,"* ]]
+          test -n "$native_bridge"
+          [[ "$native_bridge" != "0" && "$native_bridge" != "none" ]]
+          test -n "$bridge_lib"
+          echo GPUI_ANDROID_ARM64_NATIVE_BRIDGE_READY
+          mkdir -p "$GITHUB_WORKSPACE/results/android-live-hermes"
+          python3 - "$GITHUB_WORKSPACE/results/android-live-hermes/runtime-environment.json" "$abi_list" "$native_bridge" "$bridge_lib" "$qemu_pid" <<'PYENV'
+          import json, platform, sys
+          out, abi_list, native_bridge, bridge_lib, qemu_pid = sys.argv[1:]
+          json.dump({
+              "host_arch": platform.machine(),
+              "android_guest_arch": "x86_64",
+              "cpu_acceleration": "qemu-kvm",
+              "kvm_available": True,
+              "application_native_abi": "arm64-v8a",
+              "android_supported_abis": abi_list,
+              "native_bridge": native_bridge,
+              "native_bridge_library": bridge_lib,
+              "emulator_version": "37.2.13",
+              "system_image": "android-35;google_apis;x86_64",
+              "qemu_pid": int(qemu_pid)
+          }, open(out, "w"), indent=2)
+          print("ANDROID_ARM64_NATIVE_BRIDGE_RUNTIME_RECORDED")
+          PYENV
+          adb shell input keyevent 82 || true
+      - name: Install and run ARM64 APKs via Android Native Bridge on x86_64 emulator
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$GITHUB_WORKSPACE/results/android-live-hermes"
+          mkdir -p "$out"
+          export PATH="/usr/bin:$PATH"
+          for framework in svelte solid; do
+            apk="$GITHUB_WORKSPACE/results/android-live-hermes/$framework.apk"
+            test -s "$apk"
+            adb uninstall dev.gpui.mobile.example >/dev/null 2>&1 || true
+            adb install --abi arm64-v8a "$apk"
+            adb shell dumpsys package dev.gpui.mobile.example | grep -F "primaryCpuAbi=arm64-v8a"
+            # Capture every Android log buffer. Filtering only the Rust tag can
+            # hide a pre-Rust NativeActivity/linker/Native Bridge crash and leave
+            # an empty log that looks like a missing framework PASS marker.
+            adb logcat -c
+            adb logcat -b all -v threadtime > "$out/$framework-runtime.log" 2>&1 &
+            logpid=$!
+
+            collect_android_runtime_diagnostics() {
+              local prefix="$out/$framework"
+              timeout 20s adb logcat -d -b all -v threadtime > "$prefix-logcat-full.txt" 2>&1 || true
+              timeout 15s adb logcat -b crash -d -v threadtime > "$prefix-logcat-crash.txt" 2>&1 || true
+              timeout 15s adb shell dumpsys activity activities > "$prefix-activity.txt" 2>&1 || true
+              timeout 15s adb shell dumpsys activity top > "$prefix-activity-top.txt" 2>&1 || true
+              timeout 15s adb shell dumpsys package dev.gpui.mobile.example > "$prefix-package.txt" 2>&1 || true
+              timeout 10s adb shell getprop > "$prefix-getprop.txt" 2>&1 || true
+              timeout 10s adb shell ps -A -o USER,PID,PPID,NAME,ARGS > "$prefix-processes.txt" 2>&1 || true
+              timeout 10s adb shell pm path dev.gpui.mobile.example > "$prefix-apk-path.txt" 2>&1 || true
+              local app_pid
+              app_pid="$(timeout 8s adb shell pidof dev.gpui.mobile.example 2>/dev/null | tr -d '\r' | xargs || true)"
+              printf '%s\n' "$app_pid" > "$prefix-app-pid.txt"
+              if [[ -n "$app_pid" ]]; then
+                timeout 10s adb shell cat "/proc/$app_pid/maps" > "$prefix-process-maps.txt" 2>&1 || true
+                grep -E 'libndk_translation|libgpui_mobile|libhermes|linker' "$prefix-process-maps.txt" > "$prefix-native-maps.txt" || true
+              fi
+            }
+
+            if ! timeout 90s adb shell am start -W -n dev.gpui.mobile.example/dev.gpui.mobile.GpuiActivity > "$out/$framework-activity-start.txt" 2>&1; then
+              echo "ANDROID_ACTIVITY_START_FAILED:$framework"
+              echo "=== QEMU / EMULATOR PROCESS STATUS ==="
+              ps -eo pid,ppid,stat,etime,args | grep -E '[e]mulator|[q]emu-system-x86_64' || echo "NO_EMULATOR_OR_QEMU_RUNNING"
+              echo "=== EMULATOR LOG TAIL ==="
+              tail -n 40 results-android-emulator.log 2>/dev/null || true
+              echo "=== STREAMING RUNTIME LOG (GPUI/FATAL) ==="
+              grep -Ei 'gpui|hermes|FATAL|AndroidRuntime|linker|dlopen|UnsatisfiedLink|SIGSEGV|SIGABRT|panic' "$out/$framework-runtime.log" | tail -n 80 || true
+              collect_android_runtime_diagnostics
+              cat "$out/$framework-activity-start.txt"
+              kill "$logpid" 2>/dev/null || true
+              wait "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+
+            app_pid=""
+            for tick in $(seq 1 30); do
+              app_pid="$(timeout 8s adb shell pidof dev.gpui.mobile.example 2>/dev/null | tr -d '\r' | xargs || true)"
+              if [[ -n "$app_pid" ]]; then break; fi
+              sleep 1
+            done
+            printf '%s\n' "$app_pid" > "$out/$framework-app-pid.txt"
+            if [[ -z "$app_pid" ]]; then
+              echo "ANDROID_APP_PROCESS_NOT_FOUND:$framework"
+              collect_android_runtime_diagnostics
+              kill "$logpid" 2>/dev/null || true
+              wait "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+            timeout 10s adb shell cat "/proc/$app_pid/maps" > "$out/$framework-process-maps.txt" 2>&1 || true
+            grep -E 'libndk_translation|libgpui_mobile|libhermes|linker' "$out/$framework-process-maps.txt" > "$out/$framework-native-maps.txt" || true
+
+            passed=false
+            for tick in $(seq 1 300); do
+              if grep -q "GPUI_LIVE_HERMES_PASS:$framework" "$out/$framework-runtime.log"; then passed=true; break; fi
+              if ! timeout 8s adb shell "test -d /proc/$app_pid" >/dev/null 2>&1; then
+                echo "ANDROID_APP_PROCESS_EXITED_BEFORE_HERMES_PASS:$framework:$app_pid"
+                break
+              fi
+              sleep 1
+            done
+            if [[ "$passed" != true ]]; then
+              echo "ANDROID_LIVE_HERMES_MARKER_MISSING:$framework"
+              collect_android_runtime_diagnostics
+              echo "=== ACTIVITY START ==="
+              cat "$out/$framework-activity-start.txt" 2>/dev/null || true
+              echo "=== APP/BRIDGE DIAGNOSTICS ==="
+              cat "$out/$framework-app-pid.txt" "$out/$framework-native-maps.txt" 2>/dev/null || true
+              echo "=== ANDROID FATAL/LINKER/BRIDGE LOGS ==="
+              grep -Ei 'FATAL EXCEPTION|AndroidRuntime|linker|dlopen|UnsatisfiedLinkError|NativeBridge|native bridge|signal [0-9]|SIGSEGV|SIGABRT|ANativeActivity|android_main|GPUI_LIVE_HERMES|panic|fatal|crash' "$out/$framework-logcat-full.txt" | tail -240 || true
+              kill "$logpid" 2>/dev/null || true
+              wait "$logpid" 2>/dev/null || true
+              exit 1
+            fi
+            python3 "$GITHUB_WORKSPACE/tools/extract-gpui-replay.py" \
+              --log "$out/$framework-runtime.log" --framework "$framework" \
+              --platform android --out "$out/$framework-metrics.json"
+            adb exec-out screencap -p > "$out/$framework.png"
+            "$GPUI_IMAGE_PYTHON" "$GITHUB_WORKSPACE/tools/verify-mobile-live-image.py" "$out/$framework.png"
+            kill "$logpid" 2>/dev/null || true
+            adb shell am force-stop dev.gpui.mobile.example
+          done
+          echo GPUI_ANDROID_ARM64_NATIVE_BRIDGE_LIVE_HERMES_TWO_FRAMEWORKS_PASS
+      - if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p results/android-live-hermes
+          if [ -s /tmp/gpui-live-emulator.pid ]; then
+            emulator_pid="$(cat /tmp/gpui-live-emulator.pid)"
+            if command -v timeout >/dev/null 2>&1 && timeout 5s adb get-state >/dev/null 2>&1; then
+              timeout 20s adb logcat -d -b all -v threadtime > results/android-live-hermes/final-logcat-all.txt 2>&1
+              timeout 12s adb logcat -b crash -d -v threadtime > results/android-live-hermes/final-logcat-crash.txt 2>&1
+              timeout 12s adb shell ps -A -o USER,PID,PPID,NAME,ARGS > results/android-live-hermes/final-processes.txt 2>&1
+              timeout 12s adb shell dumpsys activity activities > results/android-live-hermes/final-activity.txt 2>&1
+            fi
+            if [ -s /tmp/gpui-live-qemu.pid ]; then
+              qemu_pid="$(cat /tmp/gpui-live-qemu.pid)"
+              kill "$qemu_pid" 2>/dev/null
+              rm -f /tmp/gpui-live-qemu.pid
+            fi
+            kill "$emulator_pid" 2>/dev/null
+            wait "$emulator_pid" 2>/dev/null
+            rm -f /tmp/gpui-live-emulator.pid
+          else
+            : > results/android-live-hermes/final-logcat.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-android-arm64-native-bridge-live-hermes-svelte-solid-evidence
+          path: |
+            results/android-live-hermes/
+            results-android-emulator.log
           retention-days: 14
