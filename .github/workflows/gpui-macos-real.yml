@@ -55,11 +55,13 @@ jobs:
           realpath .zed-source/crates/gpui/../../../crates/hermes-gpui-spike
           uname -m
           xcodebuild -version
-      - name: Compile official GPUI app with embedded Hermes and JSI bridge
+      - name: Compile official GPUI app with embedded Hermes and JSI bridge (debug + release)
         working-directory: .zed-source
         env:
           CARGO_BUILD_JOBS: '3'
-        run: cargo build -p gpui --example hello_world
+        run: |
+          cargo build -p gpui --example hello_world
+          cargo build -p gpui --example hello_world --release
       - name: Install PNG pixel inspection
         run: python3 -m pip install --user --break-system-packages --quiet Pillow
       - name: Run real framework HBC in GPUI windows and verify live JSI render callbacks
@@ -135,4 +137,34 @@ jobs:
         with:
           name: gpui-macos-live-hermes-package-debug
           path: results/macos-live-hermes-package-debug/
+          retention-days: 14
+      - name: Stage runnable macOS live-Hermes release package
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkg=results/macos-live-hermes-package-release
+          hbc_dir=results/live-hermes/crates/hermes-gpui-spike/target
+          rm -rf "$pkg"
+          mkdir -p "$pkg/hbc"
+          cp .zed-source/target/release/examples/hello_world "$pkg/hello_world"
+          chmod +x "$pkg/hello_world"
+          cp "$hbc_dir/bootstrap.hbc" "$hbc_dir/click.hbc" "$hbc_dir/svelte.hbc" "$hbc_dir/solid.hbc" "$pkg/hbc/"
+          cat > "$pkg/run.sh" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          FRAMEWORK="${1:-svelte}"
+          export HERMES_FRAMEWORK="$FRAMEWORK"
+          export HERMES_BOOTSTRAP_HBC="$DIR/hbc/bootstrap.hbc"
+          export HERMES_CLICK_HBC="$DIR/hbc/click.hbc"
+          export HERMES_FRAMEWORK_HBC="$DIR/hbc/${FRAMEWORK}.hbc"
+          exec "$DIR/hello_world"
+          SH
+          chmod +x "$pkg/run.sh"
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: gpui-macos-live-hermes-package-release
+          path: results/macos-live-hermes-package-release/
           retention-days: 14

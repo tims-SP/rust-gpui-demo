@@ -177,12 +177,14 @@ jobs:
           foreach ($f in @("bootstrap.hbc","click.hbc","svelte.hbc","solid.hbc")) {
             if (!(Test-Path (Join-Path $hbcDir $f))) { throw "Missing HBC file: $f" }
           }
-      - name: Compile official GPUI app with embedded Hermes and JSI bridge
+      - name: Compile official GPUI app with embedded Hermes and JSI bridge (debug + release)
         shell: bash
         working-directory: .zed-source
         env:
           CARGO_BUILD_JOBS: '3'
-        run: cargo build -p gpui --example hello_world
+        run: |
+          cargo build -p gpui --example hello_world
+          cargo build -p gpui --example hello_world --release
       - name: Run real framework HBC in Windows GPUI windows and verify live JSI render callbacks
         shell: pwsh
         run: |
@@ -300,4 +302,44 @@ jobs:
         with:
           name: gpui-windows-live-hermes-package-debug
           path: results/windows-live-hermes-package-debug/
+          retention-days: 14
+      - name: Stage runnable Windows live-Hermes release package
+        if: success()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pkg = Join-Path $env:GITHUB_WORKSPACE 'results/windows-live-hermes-package-release'
+          $hbcDir = Join-Path $env:GITHUB_WORKSPACE 'results/live-hermes/crates/hermes-gpui-spike/target'
+          if (Test-Path $pkg) { Remove-Item -Recurse -Force $pkg }
+          New-Item -ItemType Directory -Force -Path (Join-Path $pkg 'hbc') | Out-Null
+          Copy-Item '.zed-source/target/release/examples/hello_world.exe' (Join-Path $pkg 'hello_world.exe')
+          Get-ChildItem '.zed-source/target/release/examples/*.dll' -ErrorAction SilentlyContinue | Copy-Item -Destination $pkg
+          foreach ($f in @("bootstrap.hbc","click.hbc","svelte.hbc","solid.hbc")) {
+            Copy-Item (Join-Path $hbcDir $f) (Join-Path $pkg "hbc/$f")
+          }
+          @'
+          param([string]$Framework = "svelte")
+          $ErrorActionPreference = "Stop"
+          $env:HERMES_FRAMEWORK = $Framework
+          $env:HERMES_BOOTSTRAP_HBC = Join-Path $PSScriptRoot "hbc/bootstrap.hbc"
+          $env:HERMES_CLICK_HBC = Join-Path $PSScriptRoot "hbc/click.hbc"
+          $env:HERMES_FRAMEWORK_HBC = Join-Path $PSScriptRoot "hbc/$Framework.hbc"
+          & (Join-Path $PSScriptRoot "hello_world.exe")
+          '@ | Set-Content -Path (Join-Path $pkg 'run.ps1') -Encoding UTF8
+          @'
+          @echo off
+          setlocal
+          set FRAMEWORK=%~1
+          if "%FRAMEWORK%"=="" set FRAMEWORK=svelte
+          set HERMES_FRAMEWORK=%FRAMEWORK%
+          set HERMES_BOOTSTRAP_HBC=%~dp0hbc\bootstrap.hbc
+          set HERMES_CLICK_HBC=%~dp0hbc\click.hbc
+          set HERMES_FRAMEWORK_HBC=%~dp0hbc\%FRAMEWORK%.hbc
+          "%~dp0hello_world.exe"
+          '@ | Set-Content -Path (Join-Path $pkg 'run.bat') -Encoding ASCII
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: gpui-windows-live-hermes-package-release
+          path: results/windows-live-hermes-package-release/
           retention-days: 14
