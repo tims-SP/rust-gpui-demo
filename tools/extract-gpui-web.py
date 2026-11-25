@@ -44,8 +44,14 @@ def extract(html: str, framework: str) -> dict:
         raise ValueError("partial web scene updates")
     if metrics.get("render_callbacks_with_pending_update", 0) < 20:
         raise ValueError("render callback evidence insufficient")
-    if metrics.get("live_jsi_to_gpui") is not False or metrics.get("live_hermes_vm") is not False:
-        raise ValueError("unexpected and unverified live bridge claim")
+    is_live_vm = metrics.get("live_hermes_vm")
+    is_live_bridge = metrics.get("live_jsi_to_gpui")
+    if not isinstance(is_live_vm, bool) or not isinstance(is_live_bridge, bool):
+        raise ValueError("invalid live bridge flags")
+    if is_live_vm != is_live_bridge:
+        raise ValueError("mismatched live_hermes_vm and live_jsi_to_gpui flags")
+    if is_live_vm and metrics.get("source") != "live-Hermes-WASM-in-browser":
+        raise ValueError("unverified live bridge claim without live-Hermes-WASM-in-browser source")
     if not all(isinstance(metrics.get(k), int) for k in ("p50_us","p95_us","p99_us")):
         raise ValueError("missing measured latency quantiles")
     if not (0 <= metrics["p50_us"] <= metrics["p95_us"] <= metrics["p99_us"]):

@@ -33,5 +33,23 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.extract("<script>"+doc()+"</script>","svelte")
 
+    def test_live_wasm_bridge_ok(self):
+        live_payload = {
+            **DATA,
+            "source": "live-Hermes-WASM-in-browser",
+            "live_hermes_vm": True,
+            "live_jsi_to_gpui": True,
+        }
+        self.assertEqual(module.extract(doc(live_payload), "svelte")["live_hermes_vm"], True)
+    def test_live_wasm_claim_without_live_source_rejected(self):
+        bad_payload = {
+            **DATA,
+            "source": "precomputed-Hermes-scene",
+            "live_hermes_vm": True,
+            "live_jsi_to_gpui": True,
+        }
+        with self.assertRaises(ValueError):
+            module.extract(doc(bad_payload), "svelte")
+
 if __name__ == "__main__":
     unittest.main()
