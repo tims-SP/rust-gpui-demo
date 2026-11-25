@@ -201,7 +201,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-          target: aarch64-apple-ios-sim
+          targets: aarch64-apple-ios-sim,aarch64-apple-ios
           cache: false
       - name: Prepare pinned GPUI Mobile example for live Hermes
         shell: bash
@@ -333,6 +333,41 @@ jobs:
             xcrun simctl terminate "$udid" dev.gpui.mobile.example >/dev/null 2>&1 || true
           done
           echo GPUI_IOS_LIVE_HERMES_TWO_FRAMEWORKS_PASS
+      - name: Build unsigned iOS device (.ipa) packages for TrollStore
+        shell: bash
+        run: |
+          set -euo pipefail
+          hbc="$GITHUB_WORKSPACE/results/live-hermes/crates/hermes-gpui-spike/target"
+          example="$GITHUB_WORKSPACE/.gpui-mobile/example"
+          ipa_out="$GITHUB_WORKSPACE/results/ios-live-hermes-ipas"
+          rm -rf "$ipa_out"
+          mkdir -p "$ipa_out"
+          cd "$example/ios"
+          for framework in svelte solid; do
+            export GPUI_LIVE_HERMES_FRAMEWORK="$framework"
+            export GPUI_LIVE_HERMES_BOOTSTRAP_HBC="$hbc/bootstrap.hbc"
+            export GPUI_LIVE_HERMES_CLICK_HBC="$hbc/click.hbc"
+            export GPUI_LIVE_HERMES_FRAMEWORK_HBC="$hbc/$framework.hbc"
+            derived="$GITHUB_WORKSPACE/.derived-ios-device-$framework"
+            rm -rf "$derived"
+            set -o pipefail
+            xcodebuild -project GpuiExample.xcodeproj -scheme GpuiExample \
+              -configuration Debug -sdk iphoneos \
+              -destination "generic/platform=iOS" \
+              -derivedDataPath "$derived" \
+              ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+              CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+              build 2>&1 | tee "$ipa_out/$framework-device-build.log" | tail -80
+            app="$derived/Build/Products/Debug-iphoneos/GpuiExample.app"
+            test -d "$app"
+            stage="$GITHUB_WORKSPACE/.ipa-stage-$framework"
+            rm -rf "$stage"
+            mkdir -p "$stage/Payload"
+            cp -R "$app" "$stage/Payload/GpuiExample.app"
+            (cd "$stage" && zip -qry "$ipa_out/GpuiExample-live-hermes-$framework-unsigned.ipa" Payload)
+            test -s "$ipa_out/GpuiExample-live-hermes-$framework-unsigned.ipa"
+            echo "GPUI_IOS_UNSIGNED_IPA_PASS:$framework"
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -344,6 +379,12 @@ jobs:
         with:
           name: gpui-ios-live-hermes-sim-apps-debug
           path: results/ios-live-hermes-packages/
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gpui-ios-live-hermes-ipas-unsigned
+          path: results/ios-live-hermes-ipas/
           retention-days: 14
 
   android-live-hermes-arm64-build:
