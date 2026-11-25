@@ -376,13 +376,9 @@ fn main() {
                 view.apply_live_batch(&batch, None, cx)
               });
               match res {
-                Ok(Ok(())) => initial_batches += 1,
-                Ok(Err(err)) => {
-                  set_bridge_error(format!("init batch #{initial_batches} failed: {err}"));
-                  return;
-                }
+                Ok(()) => initial_batches += 1,
                 Err(err) => {
-                  set_bridge_error(format!("entity update failed during init: {err}"));
+                  set_bridge_error(format!("init batch #{initial_batches} failed: {err}"));
                   return;
                 }
               }
@@ -398,16 +394,12 @@ fn main() {
                   Ok(())
                 });
                 match verify {
-                  Ok(Ok(())) => {
+                  Ok(()) => {
                     init_verified = true;
                     set_bridge_phase("interactive");
                   }
-                  Ok(Err(err)) => {
-                    set_bridge_error(format!("initial live scene validation failed: {err}"));
-                    return;
-                  }
                   Err(err) => {
-                    set_bridge_error(format!("entity update failed during init verify: {err}"));
+                    set_bridge_error(format!("initial live scene validation failed: {err}"));
                     return;
                   }
                 }
@@ -417,13 +409,9 @@ fn main() {
                 view.apply_live_batch(&batch, Some(received_at), cx)
               });
               match res {
-                Ok(Ok(())) => interactive_batches += 1,
-                Ok(Err(err)) => {
-                  set_bridge_error(format!("interactive batch #{interactive_batches} failed: {err}"));
-                  return;
-                }
+                Ok(()) => interactive_batches += 1,
                 Err(err) => {
-                  set_bridge_error(format!("entity update failed during click: {err}"));
+                  set_bridge_error(format!("interactive batch #{interactive_batches} failed: {err}"));
                   return;
                 }
               }
@@ -442,13 +430,9 @@ fn main() {
           Ok(scene.operations())
         });
         let scene_operations = match final_check {
-          Ok(Ok(ops)) => ops,
-          Ok(Err(err)) => {
-            set_bridge_error(format!("final live scene validation failed: {err}"));
-            return;
-          }
+          Ok(ops) => ops,
           Err(err) => {
-            set_bridge_error(format!("entity update failed during final verify: {err}"));
+            set_bridge_error(format!("final live scene validation failed: {err}"));
             return;
           }
         };
